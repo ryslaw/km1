@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="5">
+    <title>Status serwisów</title>
+    <style>
+        :root {
+            --bg: #f5f6f8;
+            --surface: #ffffff;
+            --surface-alt: #eceef2;
+            --ink: #171a21;
+            --ink-muted: #5b6472;
+            --border: #d8dce3;
+            --accent: #b5790a;
+            --up: #1a7f4e;
+            --up-bg: #e4f5ec;
+            --up-border: #b9e3cc;
+            --down: #b23a2e;
+            --down-bg: #fbe7e4;
+            --down-border: #f0c4bd;
+            --shadow: 0 1px 2px rgba(23, 26, 33, 0.04), 0 8px 24px -12px rgba(23, 26, 33, 0.12);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --bg: #12151b;
+                --surface: #191d25;
+                --surface-alt: #1f2430;
+                --ink: #e7e9ee;
+                --ink-muted: #8a93a3;
+                --border: #2a303c;
+                --accent: #d9a441;
+                --up: #4fcc8c;
+                --up-bg: rgba(79, 204, 140, 0.12);
+                --up-border: rgba(79, 204, 140, 0.28);
+                --down: #e2685a;
+                --down-bg: rgba(226, 104, 90, 0.14);
+                --down-border: rgba(226, 104, 90, 0.32);
+                --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --bg: #12151b;
+            --surface: #191d25;
+            --surface-alt: #1f2430;
+            --ink: #e7e9ee;
+            --ink-muted: #8a93a3;
+            --border: #2a303c;
+            --accent: #d9a441;
+            --up: #4fcc8c;
+            --up-bg: rgba(79, 204, 140, 0.12);
+            --up-border: rgba(79, 204, 140, 0.28);
+            --down: #e2685a;
+            --down-bg: rgba(226, 104, 90, 0.14);
+            --down-border: rgba(226, 104, 90, 0.32);
+            --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 3rem 1.5rem 4rem;
+        }
+
+        header.board-header {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--ink-muted);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            text-wrap: balance;
+        }
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.8rem;
+            color: var(--ink-muted);
+            padding: 0.4rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--surface);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--up);
+            animation: pulse 2.4s ease-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .live-dot { animation: none; }
+        }
+
+        @keyframes pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(79, 204, 140, 0.45); }
+            70%  { box-shadow: 0 0 0 8px rgba(79, 204, 140, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(79, 204, 140, 0); }
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .summary-cell {
+            background: var(--surface);
+            padding: 0.9rem 1.1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .summary-cell .value {
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 1.4rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .summary-cell .value.up-text { color: var(--up); }
+        .summary-cell .value.down-text { color: var(--down); }
+
+        .summary-cell .label {
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--ink-muted);
+        }
+
+        .board {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+
+        .col-headers {
+            display: grid;
+            grid-template-columns: 1fr 1.6fr auto;
+            gap: 1rem;
+            padding: 0.6rem 1.25rem;
+            background: var(--surface-alt);
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.68rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink-muted);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1.6fr auto;
+            gap: 1rem;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .row:first-of-type { border-top: none; }
+
+        .svc-name {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.22rem 0.55rem;
+            border-radius: 6px;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+
+        .pill.up { color: var(--up); background: var(--up-bg); border-color: var(--up-border); }
+        .pill.down { color: var(--down); background: var(--down-bg); border-color: var(--down-border); }
+
+        .pill::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .detail {
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.82rem;
+            color: var(--ink-muted);
+            overflow-wrap: anywhere;
+        }
+
+        .row.is-down .detail { color: var(--down); }
+
+        .checked {
+            font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.78rem;
+            color: var(--ink-muted);
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        footer {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.78rem;
+            color: var(--ink-muted);
+        }
+
+        @media (max-width: 620px) {
+            .col-headers { display: none; }
+            .row { grid-template-columns: 1fr; gap: 0.4rem; }
+            .checked { text-align: left; }
+            .summary { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="board-header">
+            <div class="eyebrow">microservices-lab &middot; panel stanu</div>
+            <div class="header-row">
+                <h1>Status serwisów</h1>
+                <span class="live-badge"><span class="live-dot"></span>odświeżanie co 5s</span>
+            </div>
+            <div class="summary">
+                <div class="summary-cell">
+                    <span class="value up-text">{{ services | selectattr("status", "equalto", "up") | list | length }} / {{ services | length }}</span>
+                    <span class="label">Usługi aktywne</span>
+                </div>
+                <div class="summary-cell">
+                    <span class="value down-text">{{ services | selectattr("status", "equalto", "down") | list | length }}</span>
+                    <span class="label">Wymaga uwagi</span>
+                </div>
+                <div class="summary-cell">
+                    <span class="value">5s</span>
+                    <span class="label">Interwał odświeżania</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="board">
+            <div class="col-headers">
+                <span>Serwis</span>
+                <span>Szczegóły</span>
+                <span>Kontrola</span>
+            </div>
+            {% for service in services %}
+            <div class="row {{ 'is-down' if service.status == 'down' }}">
+                <div class="svc-name">
+                    <span class="pill {{ service.status }}">{{ service.status }}</span>
+                    {{ service.name }}
+                </div>
+                <div class="detail">{{ service.detail }}</div>
+                <div class="checked">teraz</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <footer>
+            <span>FastAPI + Jinja2 &middot; status-page</span>
+            <span>Automatyczne odświeżanie strony co 5 sekund</span>
+        </footer>
+    </div>
+</body>
+</html>
