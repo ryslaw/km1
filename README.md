@@ -19,12 +19,26 @@ Each service exposes a `GET /health` endpoint, and the three data services addit
 
 - **Language/framework:** Python 3.12, FastAPI, SQLAlchemy
 - **Database:** PostgreSQL
-- **Containerization:** Docker (Compose coming in an early milestone)
+- **Containerization:** Docker, Docker Compose
 - **Planned additions (see [Roadmap](#roadmap)):** CI via GitHub Actions, Ansible, Terraform, Kubernetes, Prometheus/Grafana
 
 ## Running locally
 
-> Docker Compose setup is tracked as the first milestone — see open issues. Until then, each service can be run individually; see its `Dockerfile` and `requirements.txt`.
+Requires Docker with the Compose plugin (`docker compose version`).
+
+1. Copy the environment template and fill in your own values:
+   ```
+   cp .env.example .env
+   ```
+2. Start the stack:
+   ```
+   docker compose up --build
+   ```
+3. Open the status dashboard at http://localhost:8000 once all containers report healthy.
+
+`user-service`, `product-service`, and `order-service` are reachable from each other over the Compose network by service name, but are not exposed to the host by default — use the status dashboard, or add a `ports` mapping in `docker-compose.yml` if you need to hit one of them directly (e.g. its `/docs` page) from your machine.
+
+Stop the stack with `docker compose down` (add `-v` to also remove the Postgres volumes and start from a clean database).
 
 ## Roadmap
 
