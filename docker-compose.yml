@@ -22,6 +22,7 @@ services:
             POSTGRES_USER: ${POSTGRES_USER}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_DB: user-service-db
+            PGDATA: /var/lib/postgresql/data/pgdata
         volumes:
             - user-service-db-data:/var/lib/postgresql/data
         healthcheck:
@@ -54,6 +55,7 @@ services:
             POSTGRES_USER: ${POSTGRES_USER}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_DB: product-service-db
+            PGDATA: /var/lib/postgresql/data/pgdata
         volumes:
             - product-service-db-data:/var/lib/postgresql/data
         healthcheck:
@@ -92,6 +94,7 @@ services:
             POSTGRES_USER: ${POSTGRES_USER}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_DB: order-service-db
+            PGDATA: /var/lib/postgresql/data/pgdata
         volumes:
             - order-service-db-data:/var/lib/postgresql/data
         healthcheck:
