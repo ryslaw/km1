@@ -43,6 +43,30 @@ by service name.
 
 Stop the stack with `docker compose down` (add `-v` to also remove the Postgres volumes and start from a clean database).
 
+## Development
+
+Dev tooling (linting and testing) is shared across all four services via a single root-level `requirements-dev.txt`, rather than duplicated per service:
+
+```
+pip install -r requirements-dev.txt
+```
+
+### Linting & formatting
+
+Linting and formatting are handled by [ruff](https://docs.astral.sh/ruff/), configured once at the repo root (`pyproject.toml`) for all services:
+
+```
+ruff check .
+```
+
+### Testing
+
+Each service has its own `tests/` directory. Run a service's tests from within that service's directory:
+
+```
+cd services/user-service && pytest
+```
+
 ## Roadmap
 
 This project is developed milestone by milestone, each tracked as a GitHub Milestone with issues:

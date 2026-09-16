@@ -1,0 +1,2 @@
+[tool.ruff]
+include = ["services/*/app", "services/*/tests"]
