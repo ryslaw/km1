@@ -36,7 +36,10 @@ Requires Docker with the Compose plugin (`docker compose version`).
    ```
 3. Open the status dashboard at http://localhost:8000 once all containers report healthy.
 
-`user-service`, `product-service`, and `order-service` are reachable from each other over the Compose network by service name, but are not exposed to the host by default — use the status dashboard, or add a `ports` mapping in `docker-compose.yml` if you need to hit one of them directly (e.g. its `/docs` page) from your machine.
+Each service is also reachable directly from the host for debugging: `user-service` on http://localhost:8001,
+`product-service` on http://localhost:8002, and `order-service` on http://localhost:8003 (e.g. append `/docs`
+to any of these for its interactive API docs). Internally, services talk to each other over the Compose network
+by service name.
 
 Stop the stack with `docker compose down` (add `-v` to also remove the Postgres volumes and start from a clean database).
 
