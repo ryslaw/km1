@@ -1,0 +1,5 @@
+[tool.ruff]
+include = ["services/*/app/**/*.py", "services/*/tests/**/*.py"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]

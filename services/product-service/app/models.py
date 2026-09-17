@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from sqlalchemy import Column, Integer, String, Numeric, Boolean
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Boolean, Column, Integer, Numeric, String
 
 from .database import Base
 
@@ -41,8 +41,7 @@ class ProductOut(BaseModel):
     price: float
     stock: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StockReservation(BaseModel):

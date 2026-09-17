@@ -3,15 +3,17 @@ import time
 
 import psycopg2
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://product_service:product_service_pw@localhost:5433/product_service_db",
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 2})
+engine = create_engine(
+    DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 2}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -33,7 +35,9 @@ def wait_for_db(max_retries: int = 15, delay_seconds: float = 2.0) -> None:
                 conn.execute(text("SELECT 1"))
             return
         except OperationalError:
-            print(f"[product-service] database unavailable, attempt {attempt}/{max_retries}...")
+            print(
+                f"[product-service] database unavailable, attempt {attempt}/{max_retries}..."
+            )
             time.sleep(delay_seconds)
     raise RuntimeError("Could not connect to the database after multiple attempts")
 

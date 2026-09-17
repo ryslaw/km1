@@ -1,15 +1,21 @@
 import os
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from . import models
-from .database import engine, get_db, wait_for_db, is_db_alive, SessionLocal
+from .database import SessionLocal, engine, get_db, is_db_alive, wait_for_db
 
-wait_for_db()
-models.Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    wait_for_db()
+    models.Base.metadata.create_all(bind=engine)
+    yield
+
 
 # Empty prefix locally (Docker Compose, service on its own port), but "/products"
 # behind the k8s Ingress, which forwards paths without rewriting (see k8s/ingress/).
@@ -20,6 +26,7 @@ app = FastAPI(
     docs_url=f"{DOCS_PREFIX}/docs",
     redoc_url=f"{DOCS_PREFIX}/redoc",
     openapi_url=f"{DOCS_PREFIX}/openapi.json",
+    lifespan=lifespan,
 )
 
 
@@ -81,7 +88,9 @@ async def chaos_middleware(request: Request, call_next):
     if CHAOS_STATE["broken"] or _is_permanently_broken():
         return JSONResponse(
             status_code=503,
-            content={"detail": "product-service intentionally broken (chaos toggle) — POST /chaos/fix to restore"},
+            content={
+                "detail": "product-service intentionally broken (chaos toggle) — POST /chaos/fix to restore"
+            },
         )
     return await call_next(request)
 
@@ -148,7 +157,9 @@ def health():
         `{"status": "error", ...}`.
     """
     if not is_db_alive():
-        return JSONResponse(status_code=503, content={"status": "error", "service": "product-service"})
+        return JSONResponse(
+            status_code=503, content={"status": "error", "service": "product-service"}
+        )
     return {"status": "ok", "service": "product-service"}
 
 
@@ -222,7 +233,9 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/products/{product_id}/reserve", response_model=models.ProductOut)
-def reserve_stock(product_id: int, payload: models.StockReservation, db: Session = Depends(get_db)):
+def reserve_stock(
+    product_id: int, payload: models.StockReservation, db: Session = Depends(get_db)
+):
     """Called by order-service when an order is placed.
 
     Args:
