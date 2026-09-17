@@ -57,6 +57,7 @@ Linting and formatting are handled by [ruff](https://docs.astral.sh/ruff/), conf
 
 ```
 ruff check .
+ruff format .
 ```
 
 ### Testing
