@@ -1,2 +1,2 @@
 [tool.ruff]
-include = ["services/*/app", "services/*/tests"]
+include = ["services/*/app/**/*.py", "services/*/tests/**/*.py"]
