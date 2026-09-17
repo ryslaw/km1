@@ -8,9 +8,15 @@ from sqlalchemy.exc import OperationalError
 
 from . import models
 from .database import engine, get_db, wait_for_db, is_db_alive, USER_SERVICE_URL, PRODUCT_SERVICE_URL, SessionLocal
+from contextlib import asynccontextmanager
 
-wait_for_db()
-models.Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    wait_for_db()
+    models.Base.metadata.create_all(bind=engine)
+    yield
+
 
 # Empty prefix locally (Docker Compose, service on its own port), but "/orders"
 # behind the k8s Ingress, which forwards paths without rewriting (see k8s/ingress/).
@@ -21,6 +27,7 @@ app = FastAPI(
     docs_url=f"{DOCS_PREFIX}/docs",
     redoc_url=f"{DOCS_PREFIX}/redoc",
     openapi_url=f"{DOCS_PREFIX}/openapi.json",
+    lifespan=lifespan,
 )
 
 
