@@ -10,7 +10,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 SERVICES = [
     ("user-service", os.getenv("USER_SERVICE_URL", "http://user-service:8000")),
-    ("product-service", os.getenv("PRODUCT_SERVICE_URL", "http://product-service:8000")),
+    (
+        "product-service",
+        os.getenv("PRODUCT_SERVICE_URL", "http://product-service:8000"),
+    ),
     ("order-service", os.getenv("ORDER_SERVICE_URL", "http://order-service:8000")),
 ]
 
@@ -33,7 +36,11 @@ async def check_health(client: httpx.AsyncClient, name: str, base_url: str) -> d
         resp.raise_for_status()
         return {"name": name, "status": "up", "detail": resp.json().get("status", "ok")}
     except httpx.HTTPError as exc:
-        return {"name": name, "status": "down", "detail": f"{type(exc).__name__}: {exc}"}
+        return {
+            "name": name,
+            "status": "down",
+            "detail": f"{type(exc).__name__}: {exc}",
+        }
 
 
 @app.get("/", response_class=HTMLResponse)

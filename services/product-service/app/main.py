@@ -88,7 +88,9 @@ async def chaos_middleware(request: Request, call_next):
     if CHAOS_STATE["broken"] or _is_permanently_broken():
         return JSONResponse(
             status_code=503,
-            content={"detail": "product-service intentionally broken (chaos toggle) — POST /chaos/fix to restore"},
+            content={
+                "detail": "product-service intentionally broken (chaos toggle) — POST /chaos/fix to restore"
+            },
         )
     return await call_next(request)
 
@@ -155,7 +157,9 @@ def health():
         `{"status": "error", ...}`.
     """
     if not is_db_alive():
-        return JSONResponse(status_code=503, content={"status": "error", "service": "product-service"})
+        return JSONResponse(
+            status_code=503, content={"status": "error", "service": "product-service"}
+        )
     return {"status": "ok", "service": "product-service"}
 
 
@@ -229,7 +233,9 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/products/{product_id}/reserve", response_model=models.ProductOut)
-def reserve_stock(product_id: int, payload: models.StockReservation, db: Session = Depends(get_db)):
+def reserve_stock(
+    product_id: int, payload: models.StockReservation, db: Session = Depends(get_db)
+):
     """Called by order-service when an order is placed.
 
     Args:

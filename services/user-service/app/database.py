@@ -11,7 +11,9 @@ DATABASE_URL = os.getenv(
     "postgresql://user_service:user_service_pw@localhost:5432/user_service_db",
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 2})
+engine = create_engine(
+    DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 2}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -35,7 +37,9 @@ def wait_for_db(max_retries: int = 15, delay_seconds: float = 2.0) -> None:
                 conn.execute(text("SELECT 1"))
             return
         except OperationalError:
-            print(f"[user-service] database unavailable, attempt {attempt}/{max_retries}...")
+            print(
+                f"[user-service] database unavailable, attempt {attempt}/{max_retries}..."
+            )
             time.sleep(delay_seconds)
     raise RuntimeError("Could not connect to the database after multiple attempts")
 
