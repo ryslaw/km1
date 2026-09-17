@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import Column, Integer, String, DateTime, Numeric, Boolean
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Boolean, Column, DateTime, Integer, Numeric, String
 
 from .database import Base
 

@@ -1,13 +1,13 @@
 import os
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from . import models
-from .database import engine, get_db, wait_for_db, is_db_alive, SessionLocal
-from contextlib import asynccontextmanager
+from .database import SessionLocal, engine, get_db, is_db_alive, wait_for_db
 
 
 @asynccontextmanager
