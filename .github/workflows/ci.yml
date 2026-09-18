@@ -5,7 +5,7 @@ on:
     pull_request:
 
 jobs:
-    build:
+    lint:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -23,22 +23,29 @@ jobs:
             - name: Format check (ruff format --check)
               run: ruff format --check .
 
-            - name: Test user-service
-              run: |
-                pip install -r services/user-service/requirements.txt
-                cd services/user-service && pytest
+    test:
+        needs: lint
+        strategy:
+            fail-fast: false
+            matrix:
+                service:
+                    - user-service
+                    - product-service
+                    - order-service
+                    - status-page
+                    
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
 
-            - name: Test product-service
-              run: |
-                pip install -r services/product-service/requirements.txt
-                cd services/product-service && pytest
+            - uses: actions/setup-python@v5
+              with:
+                python-version: "3.12"
             
-            - name: Test order-service
+            - name: Install dev dependencies
+              run: pip install -r requirements-dev.txt
+
+            - name: Test ${{ matrix.service }}
               run: |
-                pip install -r services/order-service/requirements.txt
-                cd services/order-service && pytest
-                
-            - name: Test status-page
-              run: |
-                pip install -r services/status-page/requirements.txt
-                cd services/status-page && pytest
+                pip install -r services/${{ matrix.service }}/requirements.txt
+                cd services/${{ matrix.service }} && pytest
