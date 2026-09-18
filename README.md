@@ -1,5 +1,7 @@
 # km1 — DevOps Learning Project
 
+[![CI](https://github.com/ryslaw/km1/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ryslaw/km1/actions/workflows/ci.yml)
+
 A small e-commerce-style microservices system used as a hands-on playground for building DevOps skills: containerization, CI/CD, configuration management, infrastructure as code, Kubernetes, and observability — layered incrementally on top of an existing application.
 
 ## Architecture
@@ -57,7 +59,7 @@ Linting and formatting are handled by [ruff](https://docs.astral.sh/ruff/), conf
 
 ```
 ruff check .
-ruff format .
+ruff format --check .
 ```
 
 ### Testing
