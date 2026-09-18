@@ -1,0 +1,44 @@
+name: CI
+
+on:
+    push:
+    pull_request:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-python@v5
+              with:
+                python-version: "3.12"
+            
+            - name: Install dev dependencies
+              run: pip install -r requirements-dev.txt
+
+            - name: Lint (ruff check)
+              run: ruff check .
+            
+            - name: Format check (ruff format --check)
+              run: ruff format --check .
+
+            - name: Test user-service
+              run: |
+                pip install -r services/user-service/requirements.txt
+                cd services/user-service && pytest
+
+            - name: Test product-service
+              run: |
+                pip install -r services/product-service/requirements.txt
+                cd services/product-service && pytest
+            
+            - name: Test order-service
+              run: |
+                pip install -r services/order-service/requirements.txt
+                cd services/order-service && pytest
+                
+            - name: Test status-page
+              run: |
+                pip install -r services/status-page/requirements.txt
+                cd services/status-page && pytest
