@@ -13,6 +13,5 @@
         remote_src: true
 
     - name: Bring up docker compose stack
-      ansible.builtin.command:
-        cmd: docker compose up -d
-        chdir: "{{ playbook_dir }}/../"
+      community.docker.docker_compose_v2:
+        project_src: "{{ playbook_dir }}/../"

@@ -54,11 +54,15 @@ As an alternative to the manual steps above, a minimal Ansible playbook automate
    ```
    pip install ansible
    ```
-2. Run the playbook from the repo root:
+2. Install the required collection from Ansible Galaxy:
+   ```
+   ansible-galaxy collection install -r ansible/requirements.yml
+   ```
+3. Run the playbook from the repo root:
    ```
    ansible-playbook ansible/playbook.yml
    ```
-3. Open http://localhost:8000 once all containers report healthy, same as above.
+4. Open http://localhost:8000 once all containers report healthy, same as above.
 
 Running the playbook again is safe — it won't overwrite an existing `.env` and won't disrupt already-running containers.
 
