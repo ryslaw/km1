@@ -17,7 +17,9 @@
     - name: Ensure Docker Compose is available
       ansible.builtin.assert:
         that: docker_compose_check.rc == 0
-        fail_msg: "Docker Compose is not installed or not available in PATH. Install Docker Desktop (or the Docker Compose CLI plugin) before running this playbook."
+        fail_msg: >-
+          Docker Compose is not installed or not available in PATH. Install Docker Desktop (or the Docker Compose CLI plugin) before running this
+          playbook.
       tags:
         - preflight
 
@@ -33,7 +35,9 @@
     - name: Ensure Docker daemon is reachable
       ansible.builtin.assert:
         that: docker_daemon_check.rc == 0
-        fail_msg: "Docker daemon is not reachable. Make sure Docker is running (e.g. `sudo snap start docker`, `sudo systemctl start docker`, or start Docker Desktop) before running this playbook."
+        fail_msg: >-
+          Docker daemon is not reachable. Make sure Docker is running (e.g. `sudo snap start docker`, `sudo systemctl start docker`, or start Docker
+          Desktop) before running this playbook.
       tags:
         - preflight
 
@@ -43,6 +47,7 @@
         dest: "{{ playbook_dir }}/../.env"
         force: false
         remote_src: true
+        mode: "0600"
       tags:
         - env
 
