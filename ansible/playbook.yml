@@ -5,6 +5,30 @@
   gather_facts: false
 
   tasks:
+    - name: Check Docker Compose availability
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: docker_compose_check
+      failed_when: false
+      changed_when: false
+
+    - name: Ensure Docker Compose is available
+      ansible.builtin.assert:
+        that: docker_compose_check.rc == 0
+        fail_msg: "Docker Compose is not installed or not available in PATH. Install Docker Desktop (or the Docker Compose CLI plugin) before running this playbook."
+
+    - name: Check Docker daemon reachability
+      ansible.builtin.command:
+        cmd: docker info
+      register: docker_daemon_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Ensure Docker daemon is reachable
+      ansible.builtin.assert:
+        that: docker_daemon_check.rc == 0
+        fail_msg: "Docker daemon is not reachable. Make sure Docker is running (e.g. `sudo snap start docker`, `sudo systemctl start docker`, or start Docker Desktop) before running this playbook."
+
     - name: Ensure .env exists (copy from .env.example if missing)
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../.env.example"
