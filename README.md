@@ -45,6 +45,23 @@ by service name.
 
 Stop the stack with `docker compose down` (add `-v` to also remove the Postgres volumes and start from a clean database).
 
+## Running locally with Ansible
+
+As an alternative to the manual steps above, a minimal Ansible playbook automates the same two steps (create
+`.env` if missing, bring up the Compose stack). This targets your own machine only (`connection: local`) — no remote hosts or SSH involved.
+
+1. Install Ansible (not part of `requirements-dev.txt`; install separately):
+   ```
+   pip install ansible
+   ```
+2. Run the playbook from the repo root:
+   ```
+   ansible-playbook ansible/playbook.yml
+   ```
+3. Open http://localhost:8000 once all containers report healthy, same as above.
+
+Running the playbook again is safe — it won't overwrite an existing `.env` and won't disrupt already-running containers.
+
 ## Development
 
 Dev tooling (linting and testing) is shared across all four services via a single root-level `requirements-dev.txt`, rather than duplicated per service:

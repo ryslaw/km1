@@ -1,0 +1,18 @@
+---
+- name: Bring up km1 stack locally
+  hosts: local
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Ensure .env exists (copy from .env.example if missing)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.env.example"
+        dest: "{{ playbook_dir }}/../.env"
+        force: false
+        remote_src: true
+
+    - name: Bring up docker compose stack
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ playbook_dir }}/../"
