@@ -1,0 +1,68 @@
+---
+- name: Bring up km1 stack locally
+  hosts: local
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check Docker Compose availability
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: docker_compose_check
+      failed_when: false
+      changed_when: false
+      tags:
+        - preflight
+
+    - name: Ensure Docker Compose is available
+      ansible.builtin.assert:
+        that: docker_compose_check.rc == 0
+        fail_msg: >-
+          Docker Compose is not installed or not available in PATH. Install Docker Desktop (or the Docker Compose CLI plugin) before running this
+          playbook.
+      tags:
+        - preflight
+
+    - name: Check Docker daemon reachability
+      ansible.builtin.command:
+        cmd: docker info
+      register: docker_daemon_check
+      failed_when: false
+      changed_when: false
+      tags:
+        - preflight
+
+    - name: Ensure Docker daemon is reachable
+      ansible.builtin.assert:
+        that: docker_daemon_check.rc == 0
+        fail_msg: >-
+          Docker daemon is not reachable. Make sure Docker is running (e.g. `sudo snap start docker`, `sudo systemctl start docker`, or start Docker
+          Desktop) before running this playbook.
+      tags:
+        - preflight
+
+    - name: Ensure .env exists (copy from .env.example if missing)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.env.example"
+        dest: "{{ playbook_dir }}/../.env"
+        force: false
+        remote_src: true
+        mode: "0600"
+      tags:
+        - env
+
+    - name: Bring up docker compose stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ playbook_dir }}/../"
+      tags:
+        - compose
+
+    - name: Wait until status-page reports healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8000/health"
+      register: health_check_result
+      until: health_check_result.status == 200
+      retries: 15
+      delay: 5
+      tags:
+        - healthcheck
