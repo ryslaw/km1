@@ -41,7 +41,8 @@ crash.log
 crash.*.log
 *.tfvars
 *.tfvars.json
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally NOT ignored — commit it to pin
+# provider versions/hashes for reproducible plans.
 
 # Kubernetes local secrets (added ahead of Phase 6)
 kubeconfig*.yaml
