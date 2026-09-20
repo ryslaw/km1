@@ -32,8 +32,8 @@ resource "docker_container" "user_service_db" {
   }
 
   env = [
-    "POSTGRES_USER=admin",        # TODO: move to variable
-    "POSTGRES_PASSWORD=password", # TODO: move to variable
+    "POSTGRES_USER=${var.postgres_user}",
+    "POSTGRES_PASSWORD=${var.postgres_password}",
     "POSTGRES_DB=user-service-db",
     "PGDATA=/var/lib/postgresql/data/pgdata",
   ]
@@ -68,7 +68,7 @@ resource "docker_container" "user_service" {
   }
 
   env = [
-    "DATABASE_URL=postgresql://admin:password@user-service-db:5432/user-service-db",
+    "DATABASE_URL=postgresql://${var.postgres_user}:${var.postgres_password}@user-service-db:5432/user-service-db",
   ]
 
   depends_on = [docker_container.user_service_db]
