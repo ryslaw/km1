@@ -70,7 +70,7 @@ resource "docker_container" "service" {
   }
 
   env = concat(
-    ["DATABASE_URL=postgresql://${var.postgres_user}:${var.postgres_password}@${docker_container.service_db[each.key].name}:5432/${docker_container.service_db[each.key].name}"],
+    ["DATABASE_URL=postgresql://${var.postgres_user}:${var.postgres_password}@${docker_container.service_db[each.key].name}:5432/${each.key}-db"],
     each.value.extra_env
   )
 }
