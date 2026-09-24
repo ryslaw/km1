@@ -24,7 +24,7 @@ Each service exposes a `GET /health` endpoint, and the three data services addit
 - **Containerization:** Docker, Docker Compose
 - **CI:** GitHub Actions
 - **Configuration management / IaC:** Ansible, Terraform
-- **Planned additions (see [Roadmap](#roadmap)):** Kubernetes, Prometheus/Grafana 
+- **Planned additions (see [Roadmap](#roadmap)):** Kubernetes, Prometheus/Grafana
 
 ## Running locally
 
