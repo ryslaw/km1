@@ -1,0 +1,5 @@
+# Avoid @, :, and / in postgres_password — these characters are not
+# URL-encoded when building DATABASE_URL and will break
+# the Postgres connection string.
+postgres_user     = "admin"
+postgres_password = "password"
