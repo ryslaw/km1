@@ -49,3 +49,16 @@ spec:
           ports:
             - containerPort: 8000
               name: http
+          startupProbe:
+            tcpSocket:
+              port: 80
+            timeoutSeconds: 70 # > 60 s: failureThreshold * periodSeconds
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: 80
+            timeoutSeconds: 5 # > 4 s: middleware + is_db_alive, each connect_timeout=2
+          livenessProbe:
+            tcpSocket:
+              port: 80
+            failureThreshold: 3
