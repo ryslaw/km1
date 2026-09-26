@@ -47,14 +47,14 @@ spec:
               name: http
           startupProbe:
             tcpSocket:
-              port: 80
-            timeoutSeconds: 70 # > 60 s: failureThreshold * periodSeconds
+              port: http
+            periodSeconds: 5
+            failureThreshold: 18 # 5 s × 18 = 90 s > ~60 s worst-case wait_for_db()
           readinessProbe:
             httpGet:
               path: "/health"
-              port: 80
+              port: http
             timeoutSeconds: 5 # > 4 s: middleware + is_db_alive, each connect_timeout=2
           livenessProbe:
             tcpSocket:
-              port: 80
-            failureThreshold: 3
+              port: http

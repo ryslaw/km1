@@ -35,8 +35,8 @@ spec:
           readinessProbe:
             httpGet:
               path: "/health"
-              port: 80
+              port: http
           livenessProbe:
             httpGet:
               path: "/health"
-              port: 80
+              port: http
