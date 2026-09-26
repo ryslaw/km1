@@ -49,12 +49,13 @@ spec:
             tcpSocket:
               port: http
             periodSeconds: 5
-            failureThreshold: 18 # 5 s × 18 = 90 s > ~60 s worst-case wait_for_db()
+            failureThreshold: 18 # 5 s * 18 = 90 s > ~60 s worst-case wait_for_db()
           readinessProbe:
             httpGet:
               path: "/health"
               port: http
-            timeoutSeconds: 5 # > 4 s: middleware + is_db_alive, each connect_timeout=2
+            timeoutSeconds: 5 # > 2 x 2 s: /health may open two DB connections (chaos_middleware + is_db_alive), connect_timeout=2 each
+          # interim: tcpSocket, not /health (a DB outage must not restart the app); /livez in #13
           livenessProbe:
             tcpSocket:
               port: http

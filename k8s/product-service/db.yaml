@@ -22,7 +22,7 @@ spec:
     matchLabels:
       app: product-service-db
   serviceName: "product-service-db"
-  replicas: 1
+  replicas: 1 # must stay 1: no replication, a 2nd replica would be a separate, empty database
   template:
     metadata:
       labels:
@@ -58,8 +58,8 @@ spec:
                 - sh
                 - -c
                 - "pg_isready -U $POSTGRES_USER -d product-service-db -h 127.0.0.1"
-            timeoutSeconds: 5
-            periodSeconds: 5
+            timeoutSeconds: 5 # default 1 s is too tight for pg_isready on a loaded VM
+            periodSeconds: 5 # headless Service DNS lists only Ready pods: shorter period = apps reconnect sooner
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -67,4 +67,4 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 1Gi
+            storage: 1Gi # local-path does not enforce this size
