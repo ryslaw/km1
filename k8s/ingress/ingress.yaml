@@ -1,5 +1,3 @@
-# https://kubernetes.io/docs/concepts/services-networking/ingress/#the-ingress-resource
-
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -16,18 +14,18 @@ spec:
           service:
             name: user-service
             port:
-              number: http
+              name: http
       - path: /products
         pathType: Prefix
         backend:
           service:
             name: product-service
             port:
-              number: http
+              name: http
       - path: /orders
         pathType: Prefix
         backend:
           service:
             name: order-service
             port:
-              number: http
+              name: http
