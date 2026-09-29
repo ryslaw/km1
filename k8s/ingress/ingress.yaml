@@ -5,14 +5,15 @@ metadata:
   name: ingress
 spec:
   ingressClassName: traefik
-  defaultBackend:
-    service:
-      name: status-page
-      port:
-        name: http
   rules:
   - http:
       paths:
+      - path: /
+        pathType: Prefix
+        service:
+          name: status-page
+          port:
+            name: http
       - path: /users
         pathType: Prefix
         backend:
