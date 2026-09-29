@@ -10,10 +10,11 @@ spec:
       paths:
       - path: /
         pathType: Prefix
-        service:
-          name: status-page
-          port:
-            name: http
+        backend:
+          service:
+            name: status-page
+            port:
+              name: http
       - path: /users
         pathType: Prefix
         backend:
