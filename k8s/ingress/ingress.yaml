@@ -36,4 +36,3 @@ spec:
             name: order-service
             port:
               name: http
-              
