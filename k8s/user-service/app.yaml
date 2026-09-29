@@ -42,6 +42,8 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: DATABASE_URL
               value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@user-service-db:5432/user-service-db"
+            - name: DOCS_PREFIX
+              value: "/users"
           ports:
             - containerPort: 8000
               name: http

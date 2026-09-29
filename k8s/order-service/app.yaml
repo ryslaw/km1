@@ -46,6 +46,8 @@ spec:
               value: "http://user-service:8000"
             - name: PRODUCT_SERVICE_URL
               value: "http://product-service:8000"
+            - name: DOCS_PREFIX
+              value: "/orders"
           ports:
             - containerPort: 8000
               name: http
