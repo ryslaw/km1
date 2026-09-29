@@ -5,6 +5,11 @@ metadata:
   name: ingress
 spec:
   ingressClassName: traefik
+  defaultBackend:
+    service:
+      name: status-page
+      port:
+        name: http
   rules:
   - http:
       paths:
