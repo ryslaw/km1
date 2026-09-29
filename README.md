@@ -109,13 +109,13 @@ Things to keep in mind:
 
 A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, deployed with `kubectl apply`
 into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
-Traefik, which serves as the Ingress controllerr, and the `local-path` storage provisioner for the Postgres volumes.
+Traefik, which serves as the Ingress controller, and the `local-path` storage provisioner for the Postgres volumes.
 Images are built locally and imported straight into the cluster — no container registry, no Helm.
 
 1. Install k3d and kubectl (not part of `requirements-dev.txt`; see the
    [k3d install dev](https://k3d.io/#installation) and the [kubectl install docs](https://kubernetes.io/docs/tasks/tools/)).
    Keep kubectl within one minor version of the cluster's Kubernetes version (`kubectl version`).
-2. Create the cluster, mapping host port 8080 to the cluster's load balancer (ports 8000-8003 are left free for the
+2. Create the cluster, mapping host port 8080 to the cluster's load balancer (ports 8000—8003 are left free for the
    other run methods):
    ```
    k3d cluster create km1 -p "8080:80@loadbalancer"
@@ -166,9 +166,9 @@ Things to keep in mind:
 - **Behind the Ingress, only the API and docs move under the service prefix.** Chaos endpoints are served under it too
   (e.g. `POST /users/chaos/break`), but `/health` is not prefixed, so http://localhost:8080/health is answered by
   `status-page`.
-- **A database outage makes app pods NotReady instead of restarting them.** Readiness checks `GET /health`, which fails
-  while the service's database is down; liveness is an interim TCP check on the app port, to be replaced by a
-  DB-independent `/livez` endpoint (#13).
+- **`/health` is the only endpoint not served under the service prefix.** API docs and chaos endpoints move under it
+  (e.g. `/users/docs`, `POST /users/chaos/break`), but `/health` does not, so http://localhost:8080/health is answered
+  by `status-page`.
 - **Avoid `@`, `:` and `/` in `POSTGRES_PASSWORD`**, as with Compose: `DATABASE_URL` is assembled from the Secret without
   URL-encoding.
 
