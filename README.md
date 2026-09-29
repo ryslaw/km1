@@ -24,7 +24,8 @@ Each service exposes a `GET /health` endpoint, and the three data services addit
 - **Containerization:** Docker, Docker Compose
 - **CI:** GitHub Actions
 - **Configuration management / IaC:** Ansible, Terraform
-- **Planned additions (see [Roadmap](#roadmap)):** Kubernetes, Prometheus/Grafana
+- **Orchestration:** Kubernetes (k3d, Traefik Ingress)
+- **Planned additions (see [Roadmap](#roadmap)):** Prometheus/Grafana
 
 ## Running locally
 
@@ -103,6 +104,73 @@ Things to keep in mind:
   that the services are ready — check http://localhost:8000 (the DB-backed services wait for their own database on start-up).
 - **`terraform.tfstate` contains the Postgres password in plain text** (`sensitive` only hides it in CLI output). Keep the
   state file local — don't commit it or copy it to another machine.
+
+## Running locally with Kubernetes (k3d)
+
+A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, deployed with `kubectl apply`
+into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
+Traefik, which serves as the Ingress controller, and the `local-path` storage provisioner for the Postgres volumes.
+Images are built locally and imported straight into the cluster — no container registry, no Helm.
+
+1. Install k3d and kubectl (not part of `requirements-dev.txt`; see the
+   [k3d install docs](https://k3d.io/#installation) and the [kubectl install docs](https://kubernetes.io/docs/tasks/tools/)).
+   Keep kubectl within one minor version of the cluster's Kubernetes version (`kubectl version`).
+2. Create the cluster, mapping host port 8080 to the cluster's load balancer (ports 8000–8003 are left free for the
+   other run methods):
+   ```
+   k3d cluster create km1 -p "8080:80@loadbalancer"
+   ```
+3. Build the service images and import them into the cluster:
+   ```
+   docker build -t km1/user-service:local services/user-service
+   docker build -t km1/product-service:local services/product-service
+   docker build -t km1/order-service:local services/order-service
+   docker build -t km1/status-page:local services/status-page
+   k3d image import km1/user-service:local km1/product-service:local km1/order-service:local km1/status-page:local -c km1
+   ```
+4. Create the namespace, then the Postgres credentials Secret from your `.env` (see [Running locally](#running-locally)
+   for creating it from `.env.example`):
+   ```
+   kubectl apply -f k8s/00-namespace.yaml
+   kubectl create secret generic postgres-credentials -n km1 --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
+   ```
+5. Apply all manifests and wait until the services are available:
+   ```
+   kubectl apply -R -f k8s/
+   kubectl wait --for=condition=Available deployment --all -n km1 --timeout=300s
+   ```
+6. Open http://localhost:8080 — a single Ingress routes by path, without rewriting:
+
+   | Path | Service |
+   |---|---|
+   | `/` | `status-page` |
+   | `/users` | `user-service` (API docs at `/users/docs`) |
+   | `/products` | `product-service` (API docs at `/products/docs`) |
+   | `/orders` | `order-service` (API docs at `/orders/docs`) |
+
+Applying the manifests again with no changes is a no-op: `kubectl diff -R -f k8s/` prints nothing. `kubectl apply`
+still reports the three Postgres StatefulSets as `configured` — a cosmetic quirk of client-side apply, because the API
+server fills in defaults and `status` inside their `volumeClaimTemplates`; nothing is actually changed.
+
+`kubectl delete namespace km1` tears down everything, **including the Postgres volumes (database data is lost) and the
+Secret** — re-create the Secret (step 4) before the next apply. `k3d cluster stop km1` / `k3d cluster start km1` pause
+and resume the cluster with its data intact; `k3d cluster delete km1` removes the whole cluster.
+
+Things to keep in mind:
+
+- **Rebuilt images are not picked up automatically.** After changing a service, rebuild and re-import its image
+  (step 3), then restart it, e.g. `kubectl rollout restart deployment/user-service -n km1`. The `:local` tag doesn't
+  change, so `kubectl apply` reports `unchanged` and running pods keep the old image.
+- **Apply the directory recursively.** Without `-R`, `kubectl apply -f k8s/` skips subdirectories such as `k8s/ingress/`.
+  Files are applied in alphabetical order, which is why the namespace manifest is named `00-namespace.yaml`.
+- **`/health` is the only endpoint not served under the service prefix.** API docs and chaos endpoints move under it
+  (e.g. `/users/docs`, `POST /users/chaos/break`), but `/health` does not, so http://localhost:8080/health is answered
+  by `status-page`.
+- **A database outage makes app pods NotReady instead of restarting them.** Readiness checks `GET /health`, which fails
+  while the service's database is down; liveness is an interim TCP check on the app port, to be replaced by a
+  DB-independent `/livez` endpoint (#13).
+- **Avoid `@`, `:` and `/` in `POSTGRES_PASSWORD`**, as with Compose: `DATABASE_URL` is assembled from the Secret without
+  URL-encoding.
 
 ## Development
 

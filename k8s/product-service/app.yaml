@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: km1
+spec:
+  selector:
+    app: product-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: km1
+spec:
+  selector:
+    matchLabels:
+      app: product-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+        - name: product-service
+          image: km1/product-service:local
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@product-service-db:5432/product-service-db"
+            - name: DOCS_PREFIX
+              value: "/products"
+          ports:
+            - containerPort: 8000
+              name: http
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 18 # 5 s * 18 = 90 s > ~60 s worst-case wait_for_db()
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: http
+            timeoutSeconds: 5 # > 2 x 2 s: /health may open two DB connections (chaos_middleware + is_db_alive), connect_timeout=2 each
+          # interim: tcpSocket, not /health (a DB outage must not restart the app); /livez in #13
+          livenessProbe:
+            tcpSocket:
+              port: http

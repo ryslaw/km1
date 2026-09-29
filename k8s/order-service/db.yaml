@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service-db
+  namespace: km1
+spec:
+  clusterIP: None
+  selector:
+    app: order-service-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: order-service-db
+  namespace: km1
+spec:
+  selector:
+    matchLabels:
+      app: order-service-db
+  serviceName: "order-service-db"
+  replicas: 1 # must stay 1: no replication, a 2nd replica would be a separate, empty database
+  template:
+    metadata:
+      labels:
+        app: order-service-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18.6
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: order-service-db
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d order-service-db -h 127.0.0.1"
+            timeoutSeconds: 5 # default 1 s is too tight for pg_isready on a loaded VM
+            periodSeconds: 5 # headless Service DNS lists only Ready pods: shorter period = apps reconnect sooner
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi # local-path does not enforce this size
