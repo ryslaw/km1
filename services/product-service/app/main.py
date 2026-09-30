@@ -156,7 +156,7 @@ async def db_unavailable_handler(request: Request, exc: OperationalError):
 
 @app.get("/health")
 def health():
-    """Report service health for k8s readiness/liveness probes.
+    """Report service health for the k8s readiness probe.
 
     Returns:
         dict: `{"status": "ok", "service": "product-service"}` when the
