@@ -30,11 +30,12 @@ app = FastAPI(
 )
 
 
-# Manual chaos toggle for practicing k8s failure scenarios (readiness/liveness,
-# pod restarts). "broken" (transient) lives in process memory — reverts to
-# False on container restart. "broken_permanent" lives in the database
-# (ChaosState), so it survives pod restart/reschedule until an explicit
-# /chaos/fix.
+# Manual chaos toggle for practicing k8s failure scenarios. "broken"
+# (transient) lives in process memory: it fails both /health and /livez, so
+# the liveness probe restarts the container, which resets it to False.
+# "broken_permanent" lives in the database (ChaosState): it fails only
+# /health, so the pod stays NotReady without a restart loop and survives pod
+# restart/reschedule until an explicit /chaos/fix.
 CHAOS_STATE = {"broken": False}
 
 
@@ -73,7 +74,11 @@ def _set_permanently_broken(broken: bool) -> None:
 
 @app.middleware("http")
 async def chaos_middleware(request: Request, call_next):
-    """Short-circuit all non-chaos requests with 503 while chaos mode is active.
+    """Short-circuit requests with 503 while chaos mode is active.
+
+    Requests to the chaos endpoints and to `/livez` are always passed
+    through: the chaos endpoints must stay reachable to clear the flags,
+    and `/livez` must answer without a database query.
 
     Args:
         request: Incoming HTTP request.
@@ -84,6 +89,8 @@ async def chaos_middleware(request: Request, call_next):
         permanent), otherwise the downstream response.
     """
     if request.url.path.startswith(f"{DOCS_PREFIX}/chaos"):
+        return await call_next(request)
+    if request.url.path == "/livez":
         return await call_next(request)
     if CHAOS_STATE["broken"] or _is_permanently_broken():
         return JSONResponse(
@@ -157,6 +164,27 @@ def health():
         `{"status": "error", ...}`.
     """
     if not is_db_alive():
+        return JSONResponse(
+            status_code=503, content={"status": "error", "service": "product-service"}
+        )
+    return {"status": "ok", "service": "product-service"}
+
+
+@app.get("/livez")
+async def livez():
+    """Report process liveness for the k8s liveness probe.
+
+    Reads in-memory state only and never touches the database, so a
+    database outage or the persistent chaos flag cannot trigger a restart.
+    Declared `async` so it is answered by the event loop itself instead of
+    queueing in the thread pool behind handlers blocked on the database.
+
+    Returns:
+        dict: `{"status": "ok", "service": "product-service"}` normally;
+        a 503 JSONResponse with `{"status": "error", ...}` while the
+        transient chaos flag is set, which a container restart clears.
+    """
+    if CHAOS_STATE["broken"]:
         return JSONResponse(
             status_code=503, content={"status": "error", "service": "product-service"}
         )
