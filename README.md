@@ -15,7 +15,9 @@ Four Python services, each independently containerized:
 | `order-service` | Places orders: validates the user, reserves stock, computes total | `user-service`, `product-service` |
 | `status-page` | Dashboard polling `/health` on the three services above | all of the above |
 
-Each service exposes a `GET /health` endpoint, and the three data services additionally expose `/chaos/*` endpoints (`break`, `break-permanent`, `fix`, `status`) used later for chaos-engineering exercises.
+Each service exposes a `GET /health` endpoint, and the three data services additionally expose `GET /livez` (a
+database-independent liveness check) and `/chaos/*` endpoints (`break`, `break-permanent`, `fix`, `status`) used for
+chaos-engineering exercises (see [Probes and chaos drills](#probes-and-chaos-drills)).
 
 ## Tech stack
 
@@ -163,14 +165,57 @@ Things to keep in mind:
   change, so `kubectl apply` reports `unchanged` and running pods keep the old image.
 - **Apply the directory recursively.** Without `-R`, `kubectl apply -f k8s/` skips subdirectories such as `k8s/ingress/`.
   Files are applied in alphabetical order, which is why the namespace manifest is named `00-namespace.yaml`.
-- **`/health` is the only endpoint not served under the service prefix.** API docs and chaos endpoints move under it
-  (e.g. `/users/docs`, `POST /users/chaos/break`), but `/health` does not, so http://localhost:8080/health is answered
-  by `status-page`.
-- **A database outage makes app pods NotReady instead of restarting them.** Readiness checks `GET /health`, which fails
-  while the service's database is down; liveness is an interim TCP check on the app port, to be replaced by a
-  DB-independent `/livez` endpoint (#13).
+- **`/health` and `/livez` are the only endpoints not served under the service prefix.** API docs and chaos endpoints
+  move under it (e.g. `/users/docs`, `POST /users/chaos/break`), but the probe endpoints do not, so
+  http://localhost:8080/health is answered by `status-page`, and `/livez` of the data services is not reachable through
+  the Ingress at all — it is meant for the kubelet only.
 - **Avoid `@`, `:` and `/` in `POSTGRES_PASSWORD`**, as with Compose: `DATABASE_URL` is assembled from the Secret without
   URL-encoding.
+
+### Probes and chaos drills
+
+Each data service has three probes, and each answers a different question:
+
+| Probe | Check | What it answers |
+|---|---|---|
+| `startupProbe` | TCP on the app port, every 5 s, up to 18 times | Has the app started? The port only opens after `wait_for_db()`, which can take up to ~60 s; the other probes wait until this one succeeds. |
+| `readinessProbe` | `GET /health`, timeout 5 s | Should the pod receive traffic? Fails while the database is unreachable or either chaos flag is set. |
+| `livenessProbe` | `GET /livez`, timeout 3 s | Should the container be restarted? Never touches the database; fails only while the in-memory chaos flag is set. |
+
+`/livez` is an `async` handler, so it is answered by the event loop itself rather than queueing behind request handlers
+blocked on the database. Its 3 s timeout is longer than the 2 s database `connect_timeout`, because the chaos middleware
+still queries the database synchronously for other requests and can briefly block the event loop. `status-page` has no
+database and no chaos flags, so its `/health` serves both readiness and liveness.
+
+The four scenarios below were verified on the k3d cluster:
+
+| Scenario | `/health` | `/livez` | Observed behaviour |
+|---|---|---|---|
+| Healthy | 200 | 200 | `1/1`, no restarts |
+| Database down (`kubectl scale statefulset user-service-db -n km1 --replicas=0`) | 500 | 200 | `0/1`, no restarts; back to `1/1` once the database is scaled back to 1 |
+| `POST /users/chaos/break` (in-memory flag) | 503 | 503 | Liveness fails 3 times, the container is restarted ~20–30 s later; the restart clears the flag and the pod is back to `1/1` without `/chaos/fix` |
+| `POST /users/chaos/break-permanent` (flag in the database) | 503 | 200 | `0/1` for as long as the flag is set, no restart loop; back to `1/1` after `POST /users/chaos/fix` |
+
+To run the drills, reach the service through a port-forward rather than the Ingress, and watch the pods in a second
+terminal:
+
+```
+kubectl port-forward -n km1 svc/user-service 8081:8000
+curl -i -X POST http://localhost:8081/users/chaos/break-permanent
+kubectl get pods -n km1 -l app=user-service -w
+curl -i -X POST http://localhost:8081/users/chaos/fix
+```
+
+Things to keep in mind:
+
+- **A NotReady pod cannot be fixed through the Ingress.** It is removed from the Service endpoints, so
+  `POST http://localhost:8080/users/chaos/fix` gets `503 no available server` from Traefik. Send `/chaos/fix` through
+  the port-forward instead: an open port-forward stays attached to its pod regardless of readiness.
+- **A port-forward dies with its pod.** After `kubectl rollout restart` the pod is replaced, so start the port-forward
+  again. A container restart by the liveness probe keeps the pod, and the port-forward survives it.
+- **A database outage returns 500, not 503.** The `OperationalError` is raised inside the chaos middleware, outside
+  FastAPI's exception handlers, so it bypasses the 503 handler. The pod is still correctly marked NotReady; the status
+  code is a known issue left for a follow-up.
 
 ## Development
 
