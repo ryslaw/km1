@@ -96,7 +96,8 @@ async def chaos_middleware(request: Request, call_next):
         return JSONResponse(
             status_code=503,
             content={
-                "detail": "product-service intentionally broken (chaos toggle) — POST /chaos/fix to restore"
+                "detail": "product-service intentionally broken (chaos toggle) — "
+                "POST /chaos/fix to restore"
             },
         )
     return await call_next(request)
@@ -104,21 +105,29 @@ async def chaos_middleware(request: Request, call_next):
 
 @app.post(f"{DOCS_PREFIX}/chaos/break")
 def chaos_break():
-    """Transient failure — clears itself on container restart (e.g. via a liveness probe)."""
+    """Set the transient chaos flag.
+
+    The flag is stored in the database, so it clears itself on container
+    restart (e.g. via a liveness probe).
+    """
     CHAOS_STATE["broken"] = True
     return {"broken": True, "broken_permanent": _is_permanently_broken()}
 
 
 @app.post(f"{DOCS_PREFIX}/chaos/break-permanent")
 def chaos_break_permanent():
-    """Persistent failure — stored in the database, survives pod restart and reschedule."""
+    """Set the persistent chaos flag.
+
+    The flag is stored in the database, so it survives pod restart and
+    reschedule until an explicit /chaos/fix.
+    """
     _set_permanently_broken(True)
     return {"broken": True, "broken_permanent": True}
 
 
 @app.post(f"{DOCS_PREFIX}/chaos/fix")
 def chaos_fix():
-    """Clears both flags at once — transient and persistent."""
+    """Clear both chaos flags at once — transient and persistent."""
     CHAOS_STATE["broken"] = False
     _set_permanently_broken(False)
     return {"broken": False, "broken_permanent": False}
