@@ -1,5 +1,9 @@
 [tool.ruff]
 include = ["services/*/app/**/*.py", "services/*/tests/**/*.py"]
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends"]

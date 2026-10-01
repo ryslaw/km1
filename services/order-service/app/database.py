@@ -41,7 +41,8 @@ def wait_for_db(max_retries: int = 15, delay_seconds: float = 2.0) -> None:
             return
         except OperationalError:
             print(
-                f"[order-service] database unavailable, attempt {attempt}/{max_retries}..."
+                f"[order-service] database unavailable, attempt "
+                f"{attempt}/{max_retries}..."
             )
             time.sleep(delay_seconds)
     raise RuntimeError("Could not connect to the database after multiple attempts")
