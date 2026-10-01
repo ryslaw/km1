@@ -107,7 +107,7 @@ async def chaos_middleware(request: Request, call_next):
 def chaos_break():
     """Set the transient chaos flag.
 
-    The flag is stored in the database, so it clears itself on container
+    The flag lives in process memory, so it clears itself on container
     restart (e.g. via a liveness probe).
     """
     CHAOS_STATE["broken"] = True
