@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
+
 from . import models
 from .database import SessionLocal, engine, get_db, is_db_alive, wait_for_db
 
