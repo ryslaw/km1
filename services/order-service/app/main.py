@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from . import models
 from .database import (
@@ -81,6 +82,25 @@ def _set_permanently_broken(broken: bool) -> None:
         db.close()
 
 
+async def _read_permanent_flag() -> bool:
+    """Read the persistent chaos flag without blocking the event loop.
+
+    The synchronous database query runs in Starlette's thread pool, the same
+    one that serves plain `def` route handlers. If the database is
+    unreachable, the flag is treated as unset ("fail open"): the request
+    continues, and routes that need the database fail with 503 through
+    `db_unavailable_handler` or, for `/health`, through its own error branch.
+
+    Returns:
+        bool: The persistent flag, or False if the database is unreachable.
+    """
+    try:
+        return await run_in_threadpool(_is_permanently_broken)
+    except OperationalError:
+        print("[order-service] chaos flag unreadable, database unavailable")
+        return False
+
+
 @app.middleware("http")
 async def chaos_middleware(request: Request, call_next):
     """Short-circuit requests with 503 while chaos mode is active.
@@ -101,7 +121,7 @@ async def chaos_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path == "/livez":
         return await call_next(request)
-    if CHAOS_STATE["broken"] or _is_permanently_broken():
+    if CHAOS_STATE["broken"] or await _read_permanent_flag():
         return JSONResponse(
             status_code=503,
             content={
