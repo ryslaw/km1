@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -96,9 +97,9 @@ async def _read_permanent_flag() -> bool:
 async def chaos_middleware(request: Request, call_next):
     """Short-circuit requests with 503 while chaos mode is active.
 
-    Requests to the chaos endpoints and to `/livez` are always passed
-    through: the chaos endpoints must stay reachable to clear the flags,
-    and `/livez` must answer without a database query.
+    Requests to the chaos endpoints, `/livez` and `/metrics` are always
+    passed through: the chaos endpoints must stay reachable to clear the
+    flags, and `/livez` and `/metrics` must answer without a database query.
 
     Args:
         request: Incoming HTTP request.
@@ -110,7 +111,7 @@ async def chaos_middleware(request: Request, call_next):
     """
     if request.url.path.startswith(f"{DOCS_PREFIX}/chaos"):
         return await call_next(request)
-    if request.url.path == "/livez":
+    if request.url.path in ("/livez", "/metrics"):
         return await call_next(request)
     if CHAOS_STATE["broken"] or await _read_permanent_flag():
         return JSONResponse(
@@ -121,6 +122,15 @@ async def chaos_middleware(request: Request, call_next):
             },
         )
     return await call_next(request)
+
+
+# Registered after chaos_middleware, so it wraps it and also counts the chaos
+# 503s. Probe and scrape traffic is excluded to keep the metrics about real
+# requests; /metrics is unprefixed like /health and /livez.
+instrumentator = Instrumentator(
+    excluded_handlers=["^/health$", "^/livez$", "^/metrics$"]
+)
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 
 @app.post(f"{DOCS_PREFIX}/chaos/break")
