@@ -180,19 +180,19 @@ Each data service has three probes, and each answers a different question:
 |---|---|---|
 | `startupProbe` | TCP on the app port, every 5 s, up to 18 times | Has the app started? The port only opens after `wait_for_db()`, which can take up to ~60 s; the other probes wait until this one succeeds. |
 | `readinessProbe` | `GET /health`, timeout 5 s | Should the pod receive traffic? Fails while the database is unreachable or either chaos flag is set. |
-| `livenessProbe` | `GET /livez`, timeout 3 s | Should the container be restarted? Never touches the database; fails only while the in-memory chaos flag is set. |
+| `livenessProbe` | `GET /livez`, timeout 1 s | Should the container be restarted? Never touches the database; fails only while the in-memory chaos flag is set. |
 
-`/livez` is an `async` handler, so it is answered by the event loop itself rather than queueing behind request handlers
-blocked on the database. Its 3 s timeout is longer than the 2 s database `connect_timeout`, because the chaos middleware
-still queries the database synchronously for other requests and can briefly block the event loop. `status-page` has no
-database and no chaos flags, so its `/health` serves both readiness and liveness.
+`/livez` is an `async` handler that never touches the database, and the chaos middleware reads its persistent flag in
+a worker thread rather than on the event loop, so `/livez` answers immediately even while the database is unreachable
+and the 1 s timeout (the Kubernetes default) is enough. `status-page` has no database and no chaos flags, so its
+`/health` serves both readiness and liveness.
 
 The four scenarios below were verified on the k3d cluster:
 
 | Scenario | `/health` | `/livez` | Observed behaviour |
 |---|---|---|---|
 | Healthy | 200 | 200 | `1/1`, no restarts |
-| Database down (`kubectl scale statefulset user-service-db -n km1 --replicas=0`) | 500 | 200 | `0/1`, no restarts; back to `1/1` once the database is scaled back to 1 |
+| Database down (`kubectl scale statefulset user-service-db -n km1 --replicas=0`) | 503 | 200 | `0/1`, no restarts; endpoints that need the database return 503 JSON, the API docs keep working; back to `1/1` once the database is scaled back to 1 |
 | `POST /users/chaos/break` (in-memory flag) | 503 | 503 | Liveness fails 3 times, the container is restarted ~20–30 s later; the restart clears the flag and the pod is back to `1/1` without `/chaos/fix` |
 | `POST /users/chaos/break-permanent` (flag in the database) | 503 | 200 | `0/1` for as long as the flag is set, no restart loop; back to `1/1` after `POST /users/chaos/fix` |
 
@@ -213,9 +213,10 @@ Things to keep in mind:
   the port-forward instead: an open port-forward stays attached to its pod regardless of readiness.
 - **A port-forward dies with its pod.** After `kubectl rollout restart` the pod is replaced, so start the port-forward
   again. A container restart by the liveness probe keeps the pod, and the port-forward survives it.
-- **A database outage returns 500, not 503.** The `OperationalError` is raised inside the chaos middleware, outside
-  FastAPI's exception handlers, so it bypasses the 503 handler. The pod is still correctly marked NotReady; the status
-  code is a known issue left for a follow-up.
+- **During a database outage every request still tries the database.** The chaos middleware cannot read the
+  persistent flag, logs `chaos flag unreadable, database unavailable` and lets the request through (fail open), so
+  endpoints that need the database answer 503 themselves and the rest keep working. `/health` therefore opens two
+  connections per probe, which is why its readiness timeout is 5 s.
 
 ## Development
 
