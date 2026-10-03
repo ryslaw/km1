@@ -1,0 +1,18 @@
+# Values for the kube-prometheus-stack Helm chart on the local k3d cluster.
+# Only overrides of the chart defaults live here; see README, "Monitoring".
+
+# Alerting is out of scope for Phase 7.
+alertmanager:
+  enabled: false
+
+# k3s runs these components inside its own server/agent process instead of as
+# separate pods with reachable metrics endpoints, so the chart's default scrape
+# jobs for them would only produce targets that are always down.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
