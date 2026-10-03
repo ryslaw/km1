@@ -4,9 +4,16 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(title="status-page")
 templates = Jinja2Templates(directory="app/templates")
+
+# Probe and scrape traffic is excluded to keep the metrics about real requests.
+# The Ingress sends every unmatched path here (catch-all "/"), so /metrics is
+# also reachable through it, like /health.
+instrumentator = Instrumentator(excluded_handlers=["^/health$", "^/metrics$"])
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 SERVICES = [
     ("user-service", os.getenv("USER_SERVICE_URL", "http://user-service:8000")),
