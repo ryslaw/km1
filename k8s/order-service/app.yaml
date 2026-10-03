@@ -66,4 +66,4 @@ spec:
             httpGet:
               path: "/livez"
               port: http
-            timeoutSeconds: 3 # > 2 s connect_timeout: chaos_middleware blocks the event loop while other requests wait for the DB
+            timeoutSeconds: 1 # /livez is async and DB-free; chaos_middleware reads the DB flag in a thread pool, so the event loop never blocks
