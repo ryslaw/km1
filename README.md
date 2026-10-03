@@ -15,9 +15,11 @@ Four Python services, each independently containerized:
 | `order-service` | Places orders: validates the user, reserves stock, computes total | `user-service`, `product-service` |
 | `status-page` | Dashboard polling `/health` on the three services above | all of the above |
 
-Each service exposes a `GET /health` endpoint, and the three data services additionally expose `GET /livez` (a
-database-independent liveness check) and `/chaos/*` endpoints (`break`, `break-permanent`, `fix`, `status`) used for
-chaos-engineering exercises (see [Probes and chaos drills](#probes-and-chaos-drills)).
+Each service exposes a `GET /health` endpoint and a `GET /metrics` endpoint with Prometheus request metrics (request
+count and duration by handler, method and status; probe and scrape traffic is not counted). The three data services
+additionally expose `GET /livez` (a database-independent liveness check) and `/chaos/*` endpoints (`break`,
+`break-permanent`, `fix`, `status`) used for chaos-engineering exercises (see
+[Probes and chaos drills](#probes-and-chaos-drills)).
 
 ## Tech stack
 
@@ -165,10 +167,11 @@ Things to keep in mind:
   change, so `kubectl apply` reports `unchanged` and running pods keep the old image.
 - **Apply the directory recursively.** Without `-R`, `kubectl apply -f k8s/` skips subdirectories such as `k8s/ingress/`.
   Files are applied in alphabetical order, which is why the namespace manifest is named `00-namespace.yaml`.
-- **`/health` and `/livez` are the only endpoints not served under the service prefix.** API docs and chaos endpoints
-  move under it (e.g. `/users/docs`, `POST /users/chaos/break`), but the probe endpoints do not, so
-  http://localhost:8080/health is answered by `status-page`, and `/livez` of the data services is not reachable through
-  the Ingress at all — it is meant for the kubelet only.
+- **`/health`, `/livez` and `/metrics` are the only endpoints not served under the service prefix.** API docs and chaos
+  endpoints move under it (e.g. `/users/docs`, `POST /users/chaos/break`), but these three do not, so
+  http://localhost:8080/health and http://localhost:8080/metrics are answered by `status-page` (the catch-all `/` path),
+  and `/livez` and `/metrics` of the data services are not reachable through the Ingress at all — they are meant for the
+  kubelet and for Prometheus inside the cluster.
 - **Avoid `@`, `:` and `/` in `POSTGRES_PASSWORD`**, as with Compose: `DATABASE_URL` is assembled from the Secret without
   URL-encoding.
 
