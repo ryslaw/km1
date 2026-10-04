@@ -29,7 +29,7 @@ additionally expose `GET /livez` (a database-independent liveness check) and `/c
 - **CI:** GitHub Actions
 - **Configuration management / IaC:** Ansible, Terraform
 - **Orchestration:** Kubernetes (k3d, Traefik Ingress)
-- **Planned additions (see [Roadmap](#roadmap)):** Prometheus/Grafana
+- **Monitoring:** Prometheus, Grafana (kube-prometheus-stack, Helm)
 
 ## Running locally
 
@@ -114,7 +114,8 @@ Things to keep in mind:
 A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, deployed with `kubectl apply`
 into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
 Traefik, which serves as the Ingress controller, and the `local-path` storage provisioner for the Postgres volumes.
-Images are built locally and imported straight into the cluster — no container registry, no Helm.
+Images are built locally and imported straight into the cluster — no container registry. The application itself is
+deployed without Helm; Helm is used only for the optional monitoring stack (see [Monitoring](#monitoring)).
 
 1. Install k3d and kubectl (not part of `requirements-dev.txt`; see the
    [k3d install docs](https://k3d.io/#installation) and the [kubectl install docs](https://kubernetes.io/docs/tasks/tools/)).
@@ -220,6 +221,78 @@ Things to keep in mind:
   persistent flag, logs `chaos flag unreadable, database unavailable` and lets the request through (fail open), so
   endpoints that need the database answer 503 themselves and the rest keep working. `/health` therefore opens two
   connections per probe, which is why its readiness timeout is 5 s.
+
+### Monitoring
+
+Prometheus and Grafana run in a separate `monitoring` namespace, installed with [Helm](https://helm.sh) from the
+[kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+chart. The chart version is pinned, and every setting that differs from the chart defaults lives in
+`helm/kube-prometheus-stack/values.yaml`: Alertmanager is disabled, and so are the scrape jobs for the controller
+manager, scheduler, etcd and kube-proxy, which k3s runs inside its own process rather than as pods with reachable
+metrics endpoints, so they would only show up as targets that are always down. The stack needs roughly 1.5–2 GB of RAM.
+
+1. Install Helm (verified with Helm 4.3.0, installed with `sudo snap install helm --classic`; see the
+   [Helm install docs](https://helm.sh/docs/intro/install/) for other methods) and add the chart repository:
+   ```
+   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+   helm repo update
+   ```
+2. Create the namespace and the Grafana admin Secret. The password is read into a variable without echoing it, so it
+   ends up neither on screen nor in the shell history:
+   ```
+   kubectl create namespace monitoring
+   read -rsp "Grafana admin password: " GRAFANA_ADMIN_PASSWORD; echo
+   kubectl create secret generic grafana-admin -n monitoring \
+     --from-literal=admin-user=admin \
+     --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD"
+   unset GRAFANA_ADMIN_PASSWORD
+   ```
+3. Install the chart (the same command upgrades an existing release):
+   ```
+   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+     --namespace monitoring --create-namespace \
+     --version 91.9.0 \
+     --values helm/kube-prometheus-stack/values.yaml \
+     --wait --timeout 10m
+   ```
+4. Open the UIs through port-forwards (add `--address 0.0.0.0` to reach them from another machine on the network):
+   ```
+   kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090
+   kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+   ```
+   - Prometheus at http://localhost:9090 — all targets under *Status → Targets* should be `UP`.
+   - Grafana at http://localhost:3000 — log in as `admin` with the password from step 2. The bundled dashboards include
+     *Kubernetes / Compute Resources / Namespace (Pods)*; select the `km1` namespace to see CPU and memory per pod.
+
+Running the same `helm upgrade --install` command again with no changes is a no-op: Helm records a new revision
+(`helm history kube-prometheus-stack -n monitoring`), but the rendered manifests of the last two revisions are
+identical (`helm get manifest ... --revision N`) and no pod is restarted.
+
+To remove the stack:
+
+```
+helm uninstall kube-prometheus-stack -n monitoring
+kubectl delete namespace monitoring
+```
+
+Two things are left behind on purpose and can be removed by hand for a fully clean cluster:
+
+```
+kubectl delete service kube-prometheus-stack-kubelet -n kube-system
+kubectl get crd -o name | grep monitoring.coreos.com | xargs kubectl delete
+```
+
+Things to keep in mind:
+
+- **Helm never deletes CRDs.** The ten `monitoring.coreos.com` CRDs (`ServiceMonitor`, `Prometheus`, …) stay after
+  `helm uninstall`, because deleting a CRD deletes every object of that type in the whole cluster. A later install
+  reuses them.
+- **The operator, not Helm, creates the `kube-prometheus-stack-kubelet` Service** in `kube-system`, so it scrapes the
+  kubelets. Helm does not know about it, and `helm uninstall` leaves it behind.
+- **The values file lives outside `k8s/`.** `kubectl apply -R -f k8s/` would try to apply it as a manifest and fail,
+  since it has no `apiVersion` or `kind`.
+- **Helm keeps its state as Secrets** in the release namespace (`sh.helm.release.v1.<release>.v<revision>`), one per
+  revision; deleting the namespace deletes the release history too.
 
 ## Development
 
