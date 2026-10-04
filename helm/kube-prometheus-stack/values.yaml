@@ -16,3 +16,13 @@ kubeEtcd:
   enabled: false
 kubeProxy:
   enabled: false
+
+# The Grafana admin credentials come from a Secret created by hand before the
+# install (see README, "Monitoring"), so no password is stored in this file.
+# userKey/passwordKey match the chart defaults; they are set explicitly to show
+# which keys the Secret must contain.
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
