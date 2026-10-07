@@ -8,5 +8,5 @@ spec:
     matchLabels:
       app.kubernetes.io/part-of: km1
   endpoints:
-    port: http
-    path: /metrics
+    - port: http
+      path: /metrics
