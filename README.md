@@ -153,6 +153,30 @@ deployed without Helm; Helm is used only for the optional monitoring stack (see 
    | `/products` | `product-service` (API docs at `/products/docs`) |
    | `/orders` | `order-service` (API docs at `/orders/docs`) |
 
+### Redeploying with the script
+
+After a code change, `scripts/deploy-k3d.sh` replaces steps 3 and 5: it builds the service images, imports them into
+the cluster, applies `k8s/` recursively, restarts the Deployments and waits for their rollouts to finish. The restart is
+what makes the pods pick up the new code: the manifests use the `:local` tag with the default
+`imagePullPolicy: IfNotPresent`, so importing a rebuilt image under the same tag leaves the running pods unchanged.
+
+With no arguments it deploys all four services. Name services to rebuild and restart only those; an unknown name stops
+the script with a usage message before anything is built. It runs from any directory, and every `kubectl` call targets
+the `k3d-<cluster>` context explicitly, whichever context is current. Set `K3D_CLUSTER` to target a cluster other
+than `km1`:
+
+```
+scripts/deploy-k3d.sh
+scripts/deploy-k3d.sh user-service status-page
+K3D_CLUSTER=km1-test scripts/deploy-k3d.sh
+scripts/deploy-k3d.sh --help
+```
+
+Before building anything, the script checks that `docker`, `k3d` and `kubectl` are installed, that the cluster exists
+and that the `postgres-credentials` Secret is present in `km1`. It does not create the cluster, the namespace or the
+Secret, so on a fresh cluster run steps 2 and 4 by hand first. Any failing command stops the script with a non-zero
+exit code.
+
 Applying the manifests again with no changes is a no-op: `kubectl diff -R -f k8s/` prints nothing. `kubectl apply`
 still reports the three Postgres StatefulSets as `configured` — a cosmetic quirk of client-side apply, because the API
 server fills in defaults and `status` inside their `volumeClaimTemplates`; nothing is actually changed.
@@ -309,6 +333,13 @@ Linting and formatting are handled by [ruff](https://docs.astral.sh/ruff/), conf
 ```
 ruff check .
 ruff format --check .
+```
+
+Shell scripts are linted with [ShellCheck](https://www.shellcheck.net/) (`sudo apt install shellcheck` locally); CI runs
+it on every tracked `*.sh` file:
+
+```
+git ls-files '*.sh' | xargs -r shellcheck
 ```
 
 ### Testing
