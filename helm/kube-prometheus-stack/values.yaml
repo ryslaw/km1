@@ -26,3 +26,10 @@ grafana:
     existingSecret: grafana-admin
     userKey: admin-user
     passwordKey: admin-password
+
+# When 'false', Prometheus selects all ServiceMonitors regardless of the Helm release
+# name. This matches our manifests in 'monitoring/', which do not include the 'release'
+# label.
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
