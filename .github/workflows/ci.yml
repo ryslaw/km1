@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 26-add-a-k3d-deploy-script-and-lint-shell-scripts-with-shellcheck-in-ci]
+    branches: [main]
   pull_request:
     branches: [main]
 
