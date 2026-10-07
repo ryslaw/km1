@@ -79,3 +79,14 @@ jobs:
 
       - name: Lint (ansible-lint)
         run: ansible-lint ansible/playbook.yml
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Display ShellCheck version
+        run: shellcheck --version
+
+      - name: Check every sh file with ShellCheck
+        run: git ls-files '*.sh' | xargs -r shellcheck
