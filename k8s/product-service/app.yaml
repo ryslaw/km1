@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: product-service
   namespace: km1
+  labels:
+    app.kubernetes.io/part-of: km1
 spec:
   selector:
     app: product-service
