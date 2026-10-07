@@ -87,4 +87,4 @@ for service in "${services[@]}"; do
     -n "${NAMESPACE}" --timeout=300s
 done
 
-echo "==> Done"
+echo "==> Done
