@@ -253,7 +253,10 @@ Prometheus and Grafana run in a separate `monitoring` namespace, installed with 
 chart. The chart version is pinned, and every setting that differs from the chart defaults lives in
 `helm/kube-prometheus-stack/values.yaml`: Alertmanager is disabled, and so are the scrape jobs for the controller
 manager, scheduler, etcd and kube-proxy, which k3s runs inside its own process rather than as pods with reachable
-metrics endpoints, so they would only show up as targets that are always down. The stack needs roughly 1.5–2 GB of RAM.
+metrics endpoints, so they would only show up as targets that are always down. Prometheus is also set to pick up every
+`ServiceMonitor` in the cluster (`serviceMonitorSelectorNilUsesHelmValues: false`), not only those carrying the chart's
+`release` label, so the manifests in `monitoring/` do not depend on the Helm release name. The stack needs roughly
+1.5–2 GB of RAM.
 
 1. Install Helm (verified with Helm 4.3.0, installed with `sudo snap install helm --classic`; see the
    [Helm install docs](https://helm.sh/docs/intro/install/) for other methods) and add the chart repository:
@@ -287,14 +290,29 @@ metrics endpoints, so they would only show up as targets that are always down. T
    - Prometheus at http://localhost:9090 — all targets under *Status → Targets* should be `UP`.
    - Grafana at http://localhost:3000 — log in as `admin` with the password from step 2. The bundled dashboards include
      *Kubernetes / Compute Resources / Namespace (Pods)*; select the `km1` namespace to see CPU and memory per pod.
+5. Let Prometheus scrape the services. `monitoring/servicemonitor.yaml` holds one `ServiceMonitor` in `km1` that
+   selects the four application Services by their `app.kubernetes.io/part-of: km1` label (the `*-db` Services do not
+   carry it) and scrapes `/metrics` on their `http` port. Apply it after the chart, since the `ServiceMonitor` type
+   only exists once the chart has installed its CRDs:
+   ```
+   kubectl apply -f monitoring/
+   ```
+   Within about a minute *Status → Targets* shows a `serviceMonitor/km1/km1-services/0` pool with four `UP` targets,
+   one per service (the `job` label is the Service name). After some traffic through the Ingress, this query returns
+   request counts per service and status class:
+   ```
+   sum by (job, status) (http_requests_total)
+   ```
 
 Running the same `helm upgrade --install` command again with no changes is a no-op: Helm records a new revision
 (`helm history kube-prometheus-stack -n monitoring`), but the rendered manifests of the last two revisions are
 identical (`helm get manifest ... --revision N`) and no pod is restarted.
+`kubectl diff -f monitoring/` prints nothing once the `ServiceMonitor` is applied.
 
 To remove the stack:
 
 ```
+kubectl delete -f monitoring/
 helm uninstall kube-prometheus-stack -n monitoring
 kubectl delete namespace monitoring
 ```
@@ -315,6 +333,16 @@ Things to keep in mind:
   kubelets. Helm does not know about it, and `helm uninstall` leaves it behind.
 - **The values file lives outside `k8s/`.** `kubectl apply -R -f k8s/` would try to apply it as a manifest and fail,
   since it has no `apiVersion` or `kind`.
+- **`monitoring/` is separate from `k8s/` on purpose.** On a cluster without the monitoring stack there is no
+  `ServiceMonitor` type, and `kubectl apply` fails with `no matches for kind "ServiceMonitor"`. Keeping the file out
+  of `k8s/` lets `kubectl apply -R -f k8s/` and `scripts/deploy-k3d.sh` work whether or not the stack is installed.
+- **The `ServiceMonitor` names the Service port, not the container port.** `port: http` refers to the named port of
+  the Service; a wrong name gives no targets and no error. A Service without metadata labels is never selected.
+- **A pod that is not Ready is still scraped.** With `user-service-db` scaled to 0, the `user-service` target stays
+  `UP`, because `/metrics` does not touch the database. Requests through the Ingress, however, never reach a pod that is
+  not Ready: Traefik answers them itself with a plain-text `503 no available server`, which does not show up in
+  `http_requests_total`. To see the service's own 503s in the metrics, send the requests through a port-forward to
+  the Service.
 - **Helm keeps its state as Secrets** in the release namespace (`sh.helm.release.v1.<release>.v<revision>`), one per
   revision; deleting the namespace deletes the release history too.
 
