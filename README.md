@@ -303,11 +303,15 @@ metrics endpoints, so they would only show up as targets that are always down. P
    ```
    sum by (job, status) (http_requests_total)
    ```
+6. Open the dashboard. `monitoring/dashboard.yaml` is a ConfigMap with the `grafana_dashboard: "1"` label, applied by
+   the same `kubectl apply -f monitoring/`; the Grafana sidecar loads it (see
+   [The km1 services dashboard](#the-km1-services-dashboard)). In Grafana go to *Dashboards → km1 services*, or open
+   http://localhost:3000/d/km1-services directly.
 
 Running the same `helm upgrade --install` command again with no changes is a no-op: Helm records a new revision
 (`helm history kube-prometheus-stack -n monitoring`), but the rendered manifests of the last two revisions are
 identical (`helm get manifest ... --revision N`) and no pod is restarted.
-`kubectl diff -f monitoring/` prints nothing once the `ServiceMonitor` is applied.
+`kubectl diff -f monitoring/` prints nothing once the `ServiceMonitor` and the dashboard are applied.
 
 To remove the stack:
 
@@ -346,6 +350,76 @@ Things to keep in mind:
 - **Helm keeps its state as Secrets** in the release namespace (`sh.helm.release.v1.<release>.v<revision>`), one per
   revision; deleting the namespace deletes the release history too.
 
+#### The km1 services dashboard
+
+The dashboard (uid `km1-services`) has five panels, one line per service. It refreshes every 10 s and shows the last
+15 minutes; widen the range to see a whole drill.
+
+| Panel | Query (simplified) | What it shows |
+|---|---|---|
+| Request rate | `sum by (job) (rate(http_requests_total[2m]))` | Requests per second, probe and scrape traffic excluded |
+| 5xx share | 5xx rate / total rate, per `job` | Share of requests answered with 5xx, 0–100 %; `or … * 0` turns "no 5xx series yet" into 0 |
+| p95 duration | `histogram_quantile(0.95, …http_request_duration_highr_seconds_bucket…)` | Time within which 95 % of requests finish; uses the fine-grained histogram, the other one only has 0.1/0.5/1 s buckets |
+| Ready replicas | `kube_deployment_status_replicas_available`, `kube_statefulset_status_replicas_ready` | Ready pods per Deployment and per database StatefulSet (from kube-state-metrics) |
+| Container restarts | `changes(kube_pod_container_status_restarts_total[5m])` | Container restarts in the last 5 minutes, database containers excluded |
+
+All rates use a 2-minute window (four 30 s scrapes), so lines rise and fall over a minute or two rather than jumping.
+
+##### What the chaos drills look like
+
+Run the drills from [Probes and chaos drills](#probes-and-chaos-drills) against `user-service` while sending it
+traffic **through the port-forward**, since a pod that is not Ready gets nothing from the Ingress:
+
+```
+kubectl port-forward -n km1 svc/user-service 8081:8000
+while true; do curl -s -o /dev/null -w "%{http_code} " http://localhost:8081/users; sleep 0.5; done
+```
+
+Leave about five minutes between drills, so the 2- and 5-minute windows clear. Observed for `user-service`:
+
+| Drill | 5xx share | Ready replicas | Container restarts | Other panels |
+|---|---|---|---|---|
+| Database down (`user-service-db` scaled to 0 for ~3 min) | Rises to 100 % within ~1.5 min | `user-service-db` and `user-service` drop to 0, back to 1 after scaling up | 0 | p95 rises slightly (~10 → ~25 ms): every request still tries the database |
+| `POST /users/chaos/break` | **No change** (see below) | Drops to 0 briefly, or not at all | Jumps to 1, back to 0 after 5 min | — |
+| `POST /users/chaos/break-permanent` for ~3 min, then `fix` | Rises to 100 %, falls after `fix` | `user-service` 0 while the flag is set | 0 | — |
+
+**Why `/chaos/break` shows no 503s.** The request counters live in the memory of the application process. The
+liveness probe (every 10 s, 3 failures) restarts the container 20–30 s after the break, before Prometheus scrapes
+more than once every 30 s. The restarted process starts its counters from zero, so the 503s are lost with the old
+one: at most one scrape catches them, and `rate()` needs two samples. Metrics from the application alone can miss a
+failure shorter than the scrape interval that ends in a restart; the restart itself is what the dashboard shows.
+Metrics collected outside the process, such as from the Ingress, would not lose them.
+
+##### Changing the dashboard
+
+The dashboard is provisioned from the ConfigMap, so Grafana does not let you save changes to it. To change it:
+
+1. Open it, choose *Edit → Save as* to make a copy and make the changes there. Grafana 13 stores dashboards made in
+   the UI in its v2 schema, whose uid (`metadata.name`) cannot be edited, so the uid is fixed in the exported file.
+2. *Export → Export as code*: **Model: Classic**, **Format: JSON**, **Export for sharing externally** off (otherwise
+   the datasource becomes a `${DS_PROMETHEUS}` placeholder the sidecar does not resolve). Ignore the warning about
+   V2 features: the dashboard uses none of them. Download the file and keep it outside the repo.
+3. In the file, set `"uid": "km1-services"` and `"id": null`, then regenerate the ConfigMap from the repo root:
+   ```
+   kubectl create configmap km1-dashboard -n km1 \
+     --from-file=km1-services.json=<path to the exported file> \
+     --dry-run=client -o yaml \
+     | kubectl label --local -f - grafana_dashboard=1 -o yaml \
+     > monitoring/dashboard.yaml
+   ```
+4. Delete the copy in the UI, then `kubectl apply -f monitoring/`. Within a minute the sidecar logs
+   `Writing /tmp/dashboards/km1-services.json` (`kubectl logs -n monitoring deploy/kube-prometheus-stack-grafana
+   -c grafana-sc-dashboard`) and Grafana reloads the dashboard.
+
+Things to keep in mind:
+
+- **The sidecar is a second container in the Grafana pod.** It watches ConfigMaps labelled `grafana_dashboard: "1"`
+  in all namespaces (the chart's default `searchNamespace: ALL`), writes each key ending in `.json` as a file to
+  `/tmp/dashboards` and asks Grafana to reload them. The directory is an `emptyDir`, so the dashboard survives a
+  Grafana pod restart only because the sidecar writes it again from the ConfigMap.
+- **The datasource is referenced by uid `prometheus`**, the fixed uid the chart gives the Prometheus datasource. A
+  datasource added by hand would get a random uid, and the dashboard would show "datasource not found".
+
 ## Development
 
 Dev tooling (linting and testing) is shared across all four services via a single root-level `requirements-dev.txt`, rather than duplicated per service:
@@ -380,16 +454,16 @@ cd services/user-service && pytest
 
 ## Roadmap
 
-This project is developed milestone by milestone, each tracked as a GitHub Milestone with issues:
+This project is developed milestone by milestone, each tracked as a GitHub Milestone with issues (✅ = done):
 
-0. Git/GitHub project foundation
-1. Docker Compose (all services running together locally)
-2. Code quality & automated testing baseline
-3. Continuous Integration (GitHub Actions)
-4. Configuration management with Ansible
-5. Infrastructure as Code with Terraform (local)
-6. Kubernetes deployment
-7. Observability (metrics & dashboards)
+0. ✅ Git/GitHub project foundation
+1. ✅ Docker Compose (all services running together locally)
+2. ✅ Code quality & automated testing baseline
+3. ✅ Continuous Integration (GitHub Actions)
+4. ✅ Configuration management with Ansible
+5. ✅ Infrastructure as Code with Terraform (local)
+6. ✅ Kubernetes deployment
+7. ✅ Observability (metrics & dashboards)
 8. GitOps (stretch goal)
 
 ## Contributing
