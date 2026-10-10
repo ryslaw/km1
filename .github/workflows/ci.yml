@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 33-build-the-service-images-in-ci-and-push-them-to-ghcr]
   pull_request:
     branches: [main]
 
