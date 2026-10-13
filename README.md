@@ -205,9 +205,13 @@ again, and the image contains the whole service code of a private repository.
 - **Rotating the token.** Create a new token and repeat the `read` and `kubectl create secret docker-registry` commands
   of step 4; `kubectl apply` updates the Secret in place. The kubelet reads the Secret at every pull, so nothing needs
   a restart.
-- **An expired or wrong token breaks only new pulls.** Running pods and images already on the node keep working; a new
-  tag or a fresh cluster ends in `ErrImagePull` / `ImagePullBackOff`, and `kubectl describe pod` shows the registry's
-  answer in Events. Once the Secret is fixed, the kubelet's next retry succeeds; deleting the pod only retries sooner.
+- **A pull Secret problem can stop pods even when the image is on the node.** Running pods keep running, but since
+  Kubernetes 1.35 the kubelet checks pull credentials for images it pulled with a Secret
+  ([image pull credential verification](https://kubernetes.io/docs/concepts/containers/images/#ensureimagepullcredentialverification)):
+  a new pod with a missing Secret or a changed, wrong token has to pull again and ends in `ErrImagePull` /
+  `ImagePullBackOff`, even with the image cached. A token that expired but is unchanged still verifies locally, so it
+  breaks only new tags and fresh nodes. `kubectl describe pod` shows the registry's answer in Events. Once the Secret
+  is fixed, the kubelet's next retry succeeds; deleting the pod only retries sooner.
   The message tells the two failures apart: `failed to fetch anonymous token … 401 Unauthorized`, together with a
   `FailedToRetrieveImagePullSecret` warning, means the Secret named in `imagePullSecrets` was not found;
   `failed to fetch oauth token … 403 Forbidden` means the Secret is there but GHCR rejects its token.
