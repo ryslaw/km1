@@ -208,6 +208,9 @@ again, and the image contains the whole service code of a private repository.
 - **An expired or wrong token breaks only new pulls.** Running pods and images already on the node keep working; a new
   tag or a fresh cluster ends in `ErrImagePull` / `ImagePullBackOff`, and `kubectl describe pod` shows the registry's
   answer in Events. Once the Secret is fixed, the kubelet's next retry succeeds; deleting the pod only retries sooner.
+  The message tells the two failures apart: `failed to fetch anonymous token … 401 Unauthorized`, together with a
+  `FailedToRetrieveImagePullSecret` warning, means the Secret named in `imagePullSecrets` was not found;
+  `failed to fetch oauth token … 403 Forbidden` means the Secret is there but GHCR rejects its token.
 - **Never paste `kubectl get secret -o yaml`.** `kubectl describe secret` shows only the size of each key, but `data`
   is just base64, and the `kubectl.kubernetes.io/last-applied-configuration` annotation added by `kubectl apply`
   holds a second copy of it. Both decode to the plain token.
