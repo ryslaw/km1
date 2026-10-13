@@ -115,8 +115,9 @@ Things to keep in mind:
 A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, deployed with `kubectl apply`
 into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
 Traefik, which serves as the Ingress controller, and the `local-path` storage provisioner for the Postgres volumes.
-Images are built locally and imported straight into the cluster — no container registry. The application itself is
-deployed without Helm; Helm is used only for the optional monitoring stack (see [Monitoring](#monitoring)).
+The service images are pulled from GitHub Container Registry (GHCR), where CI pushes them on every push to `main`
+(see [Continuous integration](#continuous-integration)); the manifests pin each image to a commit SHA. The application
+itself is deployed without Helm; Helm is used only for the optional monitoring stack (see [Monitoring](#monitoring)).
 
 1. Install k3d and kubectl (not part of `requirements-dev.txt`; see the
    [k3d install docs](https://k3d.io/#installation) and the [kubectl install docs](https://kubernetes.io/docs/tasks/tools/)).
@@ -126,19 +127,18 @@ deployed without Helm; Helm is used only for the optional monitoring stack (see 
    ```
    k3d cluster create km1 -p "8080:80@loadbalancer"
    ```
-3. Build the service images and import them into the cluster:
-   ```
-   docker build -t km1/user-service:local services/user-service
-   docker build -t km1/product-service:local services/product-service
-   docker build -t km1/order-service:local services/order-service
-   docker build -t km1/status-page:local services/status-page
-   k3d image import km1/user-service:local km1/product-service:local km1/order-service:local km1/status-page:local -c km1
-   ```
-4. Create the namespace, then the Postgres credentials Secret from your `.env` (see [Running locally](#running-locally)
-   for creating it from `.env.example`):
+3. Create a personal access token (classic) for pulling the images, with only the `read:packages` scope and an expiry
+   date: https://github.com/settings/tokens/new?scopes=read:packages. GHCR accepts only classic tokens from outside
+   GitHub Actions, and `read:packages` covers every package of the account, not just this repository.
+4. Create the namespace, the Postgres credentials Secret from your `.env` (see [Running locally](#running-locally) for
+   creating it from `.env.example`) and the image pull Secret with the token from step 3. `read -s` keeps the token
+   out of the shell history and off the screen:
    ```
    kubectl apply -f k8s/00-namespace.yaml
    kubectl create secret generic postgres-credentials -n km1 --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
+   read -rs GH_PAT
+   kubectl create secret docker-registry package-read -n km1 --docker-server=ghcr.io --docker-username=<GitHub user> --docker-password="$GH_PAT" --dry-run=client -o yaml | kubectl apply -f -
+   unset GH_PAT
    ```
 5. Apply all manifests and wait until the services are available:
    ```
@@ -154,43 +154,16 @@ deployed without Helm; Helm is used only for the optional monitoring stack (see 
    | `/products` | `product-service` (API docs at `/products/docs`) |
    | `/orders` | `order-service` (API docs at `/orders/docs`) |
 
-### Redeploying with the script
-
-After a code change, `scripts/deploy-k3d.sh` replaces steps 3 and 5: it builds the service images, imports them into
-the cluster, applies `k8s/` recursively, restarts the Deployments and waits for their rollouts to finish. The restart is
-what makes the pods pick up the new code: the manifests use the `:local` tag with the default
-`imagePullPolicy: IfNotPresent`, so importing a rebuilt image under the same tag leaves the running pods unchanged.
-
-With no arguments it deploys all four services. Name services to rebuild and restart only those; an unknown name stops
-the script with a usage message before anything is built. It runs from any directory, and every `kubectl` call targets
-the `k3d-<cluster>` context explicitly, whichever context is current. Set `K3D_CLUSTER` to target a cluster other
-than `km1`:
-
-```
-scripts/deploy-k3d.sh
-scripts/deploy-k3d.sh user-service status-page
-K3D_CLUSTER=km1-test scripts/deploy-k3d.sh
-scripts/deploy-k3d.sh --help
-```
-
-Before building anything, the script checks that `docker`, `k3d` and `kubectl` are installed, that the cluster exists
-and that the `postgres-credentials` Secret is present in `km1`. It does not create the cluster, the namespace or the
-Secret, so on a fresh cluster run steps 2 and 4 by hand first. Any failing command stops the script with a non-zero
-exit code.
-
 Applying the manifests again with no changes is a no-op: `kubectl diff -R -f k8s/` prints nothing. `kubectl apply`
 still reports the three Postgres StatefulSets as `configured` — a cosmetic quirk of client-side apply, because the API
 server fills in defaults and `status` inside their `volumeClaimTemplates`; nothing is actually changed.
 
-`kubectl delete namespace km1` tears down everything, **including the Postgres volumes (database data is lost) and the
-Secret** — re-create the Secret (step 4) before the next apply. `k3d cluster stop km1` / `k3d cluster start km1` pause
-and resume the cluster with its data intact; `k3d cluster delete km1` removes the whole cluster.
+`kubectl delete namespace km1` tears down everything, **including the Postgres volumes (database data is lost) and both
+Secrets** — re-create them (step 4) before the next apply. `k3d cluster stop km1` / `k3d cluster start km1` pause and
+resume the cluster with its data intact; `k3d cluster delete km1` removes the whole cluster.
 
 Things to keep in mind:
 
-- **Rebuilt images are not picked up automatically.** After changing a service, rebuild and re-import its image
-  (step 3), then restart it, e.g. `kubectl rollout restart deployment/user-service -n km1`. The `:local` tag doesn't
-  change, so `kubectl apply` reports `unchanged` and running pods keep the old image.
 - **Apply the directory recursively.** Without `-R`, `kubectl apply -f k8s/` skips subdirectories such as `k8s/ingress/`.
   Files are applied in alphabetical order, which is why the namespace manifest is named `00-namespace.yaml`.
 - **`/health`, `/livez` and `/metrics` are the only endpoints not served under the service prefix.** API docs and chaos
@@ -200,6 +173,44 @@ Things to keep in mind:
   kubelet and for Prometheus inside the cluster.
 - **Avoid `@`, `:` and `/` in `POSTGRES_PASSWORD`**, as with Compose: `DATABASE_URL` is assembled from the Secret without
   URL-encoding.
+
+### Deploying a new version
+
+The image tag in `k8s/` defines what runs on the cluster. To deploy a new version, change the tag of the service in
+its `k8s/<service>/app.yaml` to the commit SHA of an image pushed by CI and apply the manifests. The tag is the full
+SHA of the commit on `main` that CI built; the latest one is the head commit of the last successful push run:
+
+```
+gh run list --workflow ci.yml --branch main --event push --status success --limit 1 --json headSha
+kubectl apply -R -f k8s/
+```
+
+A new version always has a new tag, so the default `imagePullPolicy: IfNotPresent` pulls it and the Deployment rolls
+out on its own; no `kubectl rollout restart` is needed. The rolling update keeps the old pod until the new one is
+Ready, so a failed pull leaves the running version in place.
+
+Committing a tag change to `main` triggers another CI build with a new SHA, so `k8s/` always points at an image from
+an earlier commit. That is expected: the code in that image is the same.
+
+There is no deploy script any more: the former `scripts/deploy-k3d.sh` built and imported `:local` images over the
+manifests, which conflicts with the manifests defining the version. Argo CD takes over applying `k8s/` in
+[GitOps with Argo CD](#gitops-with-argo-cd).
+
+### Pulling the images from GHCR
+
+The packages stay private and the cluster pulls them with the `package-read` Secret, referenced as `imagePullSecrets`
+in each Deployment. Making the packages public would remove the token, but a public package can never be made private
+again, and the image contains the whole service code of a private repository.
+
+- **Rotating the token.** Create a new token and repeat the `read` and `kubectl create secret docker-registry` commands
+  of step 4; `kubectl apply` updates the Secret in place. The kubelet reads the Secret at every pull, so nothing needs
+  a restart.
+- **An expired or wrong token breaks only new pulls.** Running pods and images already on the node keep working; a new
+  tag or a fresh cluster ends in `ErrImagePull` / `ImagePullBackOff`, and `kubectl describe pod` shows the registry's
+  answer in Events. Once the Secret is fixed, the kubelet's next retry succeeds; deleting the pod only retries sooner.
+- **Never paste `kubectl get secret -o yaml`.** `kubectl describe secret` shows only the size of each key, but `data`
+  is just base64, and the `kubectl.kubernetes.io/last-applied-configuration` annotation added by `kubectl apply`
+  holds a second copy of it. Both decode to the plain token.
 
 ### Probes and chaos drills
 
@@ -340,7 +351,7 @@ Things to keep in mind:
   since it has no `apiVersion` or `kind`.
 - **`monitoring/` is separate from `k8s/` on purpose.** On a cluster without the monitoring stack there is no
   `ServiceMonitor` type, and `kubectl apply` fails with `no matches for kind "ServiceMonitor"`. Keeping the file out
-  of `k8s/` lets `kubectl apply -R -f k8s/` and `scripts/deploy-k3d.sh` work whether or not the stack is installed.
+  of `k8s/` lets `kubectl apply -R -f k8s/` work whether or not the stack is installed.
 - **The `ServiceMonitor` names the Service port, not the container port.** `port: http` refers to the named port of
   the Service; a wrong name gives no targets and no error. A Service without metadata labels is never selected.
 - **A pod that is not Ready is still scraped.** With `user-service-db` scaled to 0, the `user-service` target stays
