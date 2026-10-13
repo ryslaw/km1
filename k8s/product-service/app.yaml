@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: km1/product-service:local
+          image: ghcr.io/ryslaw/km1/product-service:7e81e5935d0a2dfc49d692fbc7214fab1f6d5c3a
           env:
             - name: POSTGRES_USER
               valueFrom:
@@ -65,3 +65,5 @@ spec:
               path: "/livez"
               port: http
             timeoutSeconds: 1 # /livez is async and DB-free; chaos_middleware reads the DB flag in a thread pool, so the event loop never blocks
+      imagePullSecrets:
+        - name: package-read
