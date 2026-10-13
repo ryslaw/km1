@@ -607,8 +607,6 @@ This project is developed milestone by milestone, each tracked as a GitHub Miles
 9. Secrets & security (Sealed Secrets, image scanning, NetworkPolicies)
 10. Observability II (alerting & centralized logs)
 11. Cloud: Google Cloud (Terraform, GKE)
-12. Cloud: AWS (Terraform, EKS)
-13. Cloud: Azure (Terraform, AKS)
 
 Throughout all phases: troubleshooting drills on deliberately broken scenarios.
 
