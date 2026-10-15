@@ -679,7 +679,7 @@ This project is developed milestone by milestone, each tracked as a GitHub Miles
 5. ✅ Infrastructure as Code with Terraform (local)
 6. ✅ Kubernetes deployment
 7. ✅ Observability (metrics & dashboards)
-8. ✅ GitOps & continuous delivery (Argo CD, container images in GHCR)
+8. GitOps & continuous delivery (Argo CD, container images in GHCR)
 9. Secrets & security (Sealed Secrets, image scanning, NetworkPolicies)
 10. Observability II (alerting & centralized logs)
 11. Cloud: Google Cloud (Terraform, GKE)
