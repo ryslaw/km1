@@ -112,8 +112,8 @@ Things to keep in mind:
 
 ## Running locally with Kubernetes (k3d)
 
-A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, deployed with `kubectl apply`
-into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
+A fourth option: the `k8s/` directory holds plain Kubernetes manifests for the same stack, which Argo CD applies from `main`
+(see [GitOps with Argo CD](#gitops-with-argo-cd)) into a dedicated `km1` namespace on a single-node [k3d](https://k3d.io) cluster running inside Docker. k3d bundles
 Traefik, which serves as the Ingress controller, and the `local-path` storage provisioner for the Postgres volumes.
 The service images are pulled from GitHub Container Registry (GHCR), where CI pushes them on every push to `main`
 (see [Continuous integration](#continuous-integration)); the manifests pin each image to a commit SHA. The application
@@ -140,10 +140,11 @@ itself is deployed without Helm; Helm is used only for the optional monitoring s
    kubectl create secret docker-registry package-read -n km1 --docker-server=ghcr.io --docker-username=<GitHub user> --docker-password="$GH_PAT" --dry-run=client -o yaml | kubectl apply -f -
    unset GH_PAT
    ```
-5. Apply all manifests and wait until the services are available:
+5. Install Argo CD and give it access to this repository (steps 1–5 of [GitOps with Argo CD](#gitops-with-argo-cd)),
+   then create the Application and wait until everything it deploys is healthy:
    ```
-   kubectl apply -R -f k8s/
-   kubectl wait --for=condition=Available deployment --all -n km1 --timeout=300s
+   kubectl apply -f argocd/application.yaml
+   kubectl wait --for=jsonpath='{.status.health.status}'=Healthy application/km1 -n argocd --timeout=300s
    ```
 6. Open http://localhost:8080 — a single Ingress routes by path, without rewriting:
 
@@ -154,18 +155,26 @@ itself is deployed without Helm; Helm is used only for the optional monitoring s
    | `/products` | `product-service` (API docs at `/products/docs`) |
    | `/orders` | `order-service` (API docs at `/orders/docs`) |
 
-Applying the manifests again with no changes is a no-op: `kubectl diff -R -f k8s/` prints nothing. `kubectl apply`
-still reports the three Postgres StatefulSets as `configured` — a cosmetic quirk of client-side apply, because the API
-server fills in defaults and `status` inside their `volumeClaimTemplates`; nothing is actually changed.
+To tear everything down, delete the Application first, then the namespace:
 
-`kubectl delete namespace km1` tears down everything, **including the Postgres volumes (database data is lost) and both
-Secrets** — re-create them (step 4) before the next apply. `k3d cluster stop km1` / `k3d cluster start km1` pause and
+```
+kubectl delete application km1 -n argocd
+kubectl delete namespace km1
+```
+
+Deleting the Application leaves the running resources alone (see [GitOps with Argo CD](#gitops-with-argo-cd)), but
+without it Argo CD would keep trying to re-create them while the namespace goes away. Deleting the namespace removes
+everything, **including the Postgres volumes (database data is lost) and both Secrets** — re-create the namespace and
+the Secrets (step 4) before applying the Application again. `k3d cluster stop km1` / `k3d cluster start km1` pause and
 resume the cluster with its data intact; `k3d cluster delete km1` removes the whole cluster.
 
 Things to keep in mind:
 
-- **Apply the directory recursively.** Without `-R`, `kubectl apply -f k8s/` skips subdirectories such as `k8s/ingress/`.
-  Files are applied in alphabetical order, which is why the namespace manifest is named `00-namespace.yaml`.
+- **The namespace and the Secrets are created by hand on purpose.** Argo CD skips `k8s/00-namespace.yaml`, so neither
+  pruning nor a mistake in git can delete the namespace together with the Secrets and the database volumes inside it.
+- **`kubectl apply -R -f k8s/` is no longer part of the workflow.** It still works (without `-R` it skips
+  subdirectories such as `k8s/ingress/`), but with automated sync Argo CD already applies the same manifests, and a
+  change applied by hand that is not in git is reverted within seconds.
 - **`/health`, `/livez` and `/metrics` are the only endpoints not served under the service prefix.** API docs and chaos
   endpoints move under it (e.g. `/users/docs`, `POST /users/chaos/break`), but these three do not, so
   http://localhost:8080/health and http://localhost:8080/metrics are answered by `status-page` (the catch-all `/` path),
@@ -177,12 +186,12 @@ Things to keep in mind:
 ### Deploying a new version
 
 The image tag in `k8s/` defines what runs on the cluster. To deploy a new version, change the tag of the service in
-its `k8s/<service>/app.yaml` to the commit SHA of an image pushed by CI and apply the manifests. The tag is the full
-SHA of the commit on `main` that CI built; the latest one is the head commit of the last successful push run:
+its `k8s/<service>/app.yaml` to the commit SHA of an image pushed by CI and merge the change to `main`; Argo CD
+deploys it within about three minutes, without any `kubectl` command. The tag is the full SHA of the commit on `main`
+that CI built; the latest one is the head commit of the last successful push run:
 
 ```
 gh run list --workflow ci.yml --branch main --event push --status success --limit 1 --json headSha
-kubectl apply -R -f k8s/
 ```
 
 A new version always has a new tag, so the default `imagePullPolicy: IfNotPresent` pulls it and the Deployment rolls
@@ -193,8 +202,7 @@ Committing a tag change to `main` triggers another CI build with a new SHA, so `
 an earlier commit. That is expected: the code in that image is the same.
 
 There is no deploy script any more: the former `scripts/deploy-k3d.sh` built and imported `:local` images over the
-manifests, which conflicts with the manifests defining the version. Argo CD takes over applying `k8s/` in
-[GitOps with Argo CD](#gitops-with-argo-cd).
+manifests, which conflicts with the manifests defining the version.
 
 ### Pulling the images from GHCR
 
@@ -255,6 +263,14 @@ curl -i -X POST http://localhost:8081/users/chaos/fix
 
 Things to keep in mind:
 
+- **Turn off automated sync for the database drill.** Argo CD's self-heal scales the database back to 1 within
+  seconds, so the outage never shows. Pause automated sync for the drill and resume it afterwards; resuming syncs the
+  Application with git, which scales the database back up on its own:
+  ```
+  kubectl patch application km1 -n argocd --type merge -p '{"spec":{"syncPolicy":{"automated":{"enabled":false}}}}'
+  kubectl patch application km1 -n argocd --type merge -p '{"spec":{"syncPolicy":{"automated":{"enabled":true}}}}'
+  ```
+  The chaos endpoints and `kubectl rollout restart` need no pause: they do not change anything Argo CD compares.
 - **A NotReady pod cannot be fixed through the Ingress.** It is removed from the Service endpoints, so
   `POST http://localhost:8080/users/chaos/fix` gets `503 no available server` from Traefik. Send `/chaos/fix` through
   the port-forward instead: an open port-forward stays attached to its pod regardless of readiness.
@@ -354,11 +370,11 @@ Things to keep in mind:
   reuses them.
 - **The operator, not Helm, creates the `kube-prometheus-stack-kubelet` Service** in `kube-system`, so it scrapes the
   kubelets. Helm does not know about it, and `helm uninstall` leaves it behind.
-- **The values file lives outside `k8s/`.** `kubectl apply -R -f k8s/` would try to apply it as a manifest and fail,
-  since it has no `apiVersion` or `kind`.
+- **The values file lives outside `k8s/`.** Argo CD (like `kubectl apply -R -f k8s/`) would try to apply it as a
+  manifest and fail, since it has no `apiVersion` or `kind`.
 - **`monitoring/` is separate from `k8s/` on purpose.** On a cluster without the monitoring stack there is no
-  `ServiceMonitor` type, and `kubectl apply` fails with `no matches for kind "ServiceMonitor"`. Keeping the file out
-  of `k8s/` lets `kubectl apply -R -f k8s/` work whether or not the stack is installed.
+  `ServiceMonitor` type, and applying it fails with `no matches for kind "ServiceMonitor"`. Keeping the file out of
+  `k8s/` lets Argo CD sync `k8s/` whether or not the stack is installed.
 - **The `ServiceMonitor` names the Service port, not the container port.** `port: http` refers to the named port of
   the Service; a wrong name gives no targets and no error. A Service without metadata labels is never selected.
 - **A pod that is not Ready is still scraped.** With `user-service-db` scaled to 0, the `user-service` target stays
@@ -540,6 +556,48 @@ Things to keep in mind:
   the `argocd-ssh-known-hosts-cm` ConfigMap.
 - **The deploy key is not your personal key.** It is read-only and limited to this one repository, and it has no
   passphrase, so it must never end up in the repo.
+
+#### The km1 Application
+
+`argocd/application.yaml` defines one Application, `km1`, that deploys `k8s/` from `main` (recursively, without
+`00-namespace.yaml`) into the `km1` namespace, with automated sync, pruning and self-heal. It lives outside `k8s/`
+because the `Application` type only exists once Argo CD is installed. Argo CD does not manage this file itself: after
+changing it, apply it with `kubectl apply -f argocd/application.yaml`.
+
+| Change | What Argo CD does |
+|---|---|
+| A commit to `k8s/` on `main` | Syncs it within about three minutes (it polls the repository every 120 s plus up to 60 s of jitter; there is no webhook from GitHub to a local cluster). *Refresh* in the UI checks right away. |
+| A manual change to a resource from git (e.g. `kubectl scale`) | Self-heal reverts it within seconds. |
+| A file removed from `k8s/` | Pruning deletes its resources on the next sync. |
+| A resource that is not in git (the Secrets, old ReplicaSets) | Nothing: Argo CD only compares and prunes resources it tracks. |
+
+Check the sync status with `kubectl get application km1 -n argocd` (columns `SYNC STATUS` and `HEALTH STATUS`; the
+expected state is `Synced` and `Healthy`) or in the UI. The UI also shows the sync history, the last synced commit and
+a diff for every resource.
+
+Things to keep in mind:
+
+- **Self-heal syncs do not appear in the history.** The history lists full syncs only, such as a new commit or a
+  manual *Sync*. A self-heal sync touches only the drifted resources and shows up only in the events:
+  `kubectl get events -n argocd --field-selector involvedObject.kind=Application,involvedObject.name=km1`. Kubernetes
+  keeps events for about an hour.
+- **Argo CD adopts existing resources.** Switching from `kubectl apply` to the Application did not recreate any pod,
+  StatefulSet or volume; Argo CD only added its `argocd.argoproj.io/tracking-id` annotation. Resources without that
+  annotation, such as the hand-made `postgres-credentials` and `package-read` Secrets, are never pruned.
+- **Deleting the Application keeps everything it deployed.** The Application has no `resources-finalizer`, so
+  `kubectl delete application km1 -n argocd` deletes only the Application; applying it again adopts the same resources
+  without recreating them. Avoid deleting it from the UI, which offers a cascading delete that removes every
+  resource the Application deployed.
+- **Pausing automated sync is not in git.** The patch from [Probes and chaos drills](#probes-and-chaos-drills) changes
+  only the object in the cluster, and nothing reverts it. Resume it with the second patch or with
+  `kubectl apply -f argocd/application.yaml`; until then, commits to `main` are not deployed.
+- **Restarts are not drift.** `kubectl rollout restart` and the UI's *Restart* action add a `restartedAt` annotation
+  that is not in git; Argo CD only compares fields defined in git, so the Application stays `Synced`.
+- **The StatefulSets stay `Synced`.** Unlike `kubectl apply`, which always reported them as `configured` because the
+  API server fills in defaults in their `volumeClaimTemplates`, Argo CD shows no difference, so no `ignoreDifferences`
+  is needed.
+- **Keep `namespace: km1` in every manifest.** Argo CD puts a resource without a namespace into the Application's
+  destination namespace, but an explicit namespace keeps the manifests correct for a plain `kubectl apply` too.
 
 ## Development
 
