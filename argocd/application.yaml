@@ -7,9 +7,7 @@ spec:
   project: default
   source:
     repoURL: git@github.com:ryslaw/km1.git
-    # Temporary: tracks the issue branch so the sync tests don't need test
-    # merges to main. Switch to main before opening the PR.
-    targetRevision: 31-sync-the-k8s-manifests-with-an-argo-cd-application
+    targetRevision: main
     path: k8s
     directory:
       recurse: true
