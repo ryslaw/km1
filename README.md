@@ -680,11 +680,15 @@ This project is developed milestone by milestone, each tracked as a GitHub Miles
 6. ✅ Kubernetes deployment
 7. ✅ Observability (metrics & dashboards)
 8. ✅ GitOps & continuous delivery (Argo CD, container images in GHCR)
-9. Secrets & security (Sealed Secrets, image scanning, NetworkPolicies)
-10. Observability II (alerting & centralized logs)
-11. Cloud: Google Cloud (Terraform, GKE)
+9. Configuration management II: Ansible on real Linux hosts (roles, Vault, testing; a multi-node k3s cluster)
+10. Automation platform: AWX
+11. Packaging & workload security (a Helm chart for km1, image scanning, pod hardening, per-service database roles)
+12. Cloud foundation: Google Cloud with Terraform (remote state, IAM, networking, keyless CI)
+13. Kubernetes in the cloud: km1 on GKE (managed secrets, network policies)
+14. CI/CD across platforms (GitLab CI, Cloud Build and Cloud Deploy, Jenkins)
+15. Operations & SRE on GKE (SLOs, alerting, logging)
 
-Throughout all phases: troubleshooting drills on deliberately broken scenarios.
+Throughout all phases: least privilege on every layer, both for people (admin, operator, developer and auditor roles) and for applications and automation (a dedicated technical account per application, pipeline and tool), and troubleshooting drills on deliberately broken scenarios.
 
 ## Contributing
 
