@@ -46,3 +46,6 @@ crash.*.log
 
 # Kubernetes local secrets (added ahead of Phase 6)
 kubeconfig*.yaml
+
+# Ansible
+.ansible/
