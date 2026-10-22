@@ -53,26 +53,88 @@ by service name.
 
 Stop the stack with `docker compose down` (add `-v` to also remove the Postgres volumes and start from a clean database).
 
-## Running locally with Ansible
+## Ansible
 
-As an alternative to the manual steps above, a minimal Ansible playbook automates the same two steps (create
-`.env` if missing, bring up the Compose stack). This targets your own machine only (`connection: local`) — no remote hosts or SSH involved.
+Everything Ansible lives in `ansible/`. Run all Ansible commands from the repo root: the root `ansible.cfg` points
+Ansible at `ansible/inventory.yml`, and Ansible only looks for `ansible.cfg` in the current directory, not in parent
+directories.
 
-1. Install Ansible (not part of `requirements-dev.txt`; install separately):
-   ```
-   pip install ansible
-   ```
-2. Install the required collection from Ansible Galaxy:
-   ```
-   ansible-galaxy collection install -r ansible/requirements.yml
-   ```
-3. Run the playbook from the repo root:
-   ```
-   ansible-playbook ansible/playbook.yml
-   ```
-4. Open http://localhost:8000 once all containers report healthy, same as above.
+### Setup
 
-Running the playbook again is safe — it won't overwrite an existing `.env` and won't disrupt already-running containers.
+The Ansible tools are pinned in `ansible/requirements.txt` and installed into their own virtual environment, separate
+from the services' root `.venv` (which pins different versions of shared dependencies such as Jinja2). The collections
+are pinned to exact versions in `ansible/requirements.yml`.
+
+```
+python3 -m venv --prompt km1-ansible ansible/.venv
+source ansible/.venv/bin/activate
+pip install -r ansible/requirements.txt
+ansible-galaxy collection install -r ansible/requirements.yml
+```
+
+`--prompt` makes the shell show `(km1-ansible)` instead of `(.venv)`, so it is obvious which environment is active.
+`ansible-lint --version` should report the versions pinned in `ansible/requirements.txt`.
+
+### Inventory
+
+| Group | Hosts | Connection |
+|---|---|---|
+| `hypervisors` | `ubuntu1` (192.168.100.31), `ubuntu2` (192.168.100.32) | SSH |
+| `local` | `localhost` | local |
+
+`ansible/inventory.yml` only says which host belongs to which group. How to reach each host lives in
+`ansible/host_vars/` (`ansible_host`, `ansible_connection`), and settings shared by all hosts live in
+`ansible/group_vars/all.yml` (`ansible_user`, `ansible_python_interpreter`). Check the merged result with:
+
+```
+ansible-inventory --graph
+ansible-inventory --host ubuntu1
+```
+
+### Reaching the physical hosts
+
+`ubuntu1` is the control node. Ansible connects to the `hypervisors` group over SSH with a dedicated,
+passphrase-protected key; `~/.ssh/config` maps both host addresses to that key (`IdentitiesOnly yes`,
+`AddKeysToAgent yes`). Host key checking stays on: before the first connection, verify each host's key fingerprint
+out-of-band and accept it with a manual `ssh`.
+
+Start an agent in each new shell, then check connectivity and privilege escalation:
+
+```
+eval "$(ssh-agent -s)"
+ansible hypervisors -m ansible.builtin.ping
+ansible hypervisors -b -K -m ansible.builtin.command -a id
+```
+
+`-b` runs the module via `sudo` and `-K` asks for the sudo password; the second command should report `uid=0(root)`
+on both hosts.
+
+### Running the Compose stack with Ansible
+
+As an alternative to the manual steps in [Running locally](#running-locally), `ansible/playbook.yml` automates the
+same two steps (create `.env` if missing, bring up the Compose stack) on the `local` group, so no SSH is involved:
+
+```
+ansible-playbook ansible/playbook.yml
+```
+
+Open http://localhost:8000 once all containers report healthy. Running the playbook again is safe: it won't
+overwrite an existing `.env` and won't disrupt already-running containers.
+
+### Linting
+
+```
+ansible-lint ansible/
+```
+
+Always pass `ansible/`: without a path, `ansible-lint` scans the whole repo, including the Compose, Kubernetes and
+monitoring YAML. The same command runs in CI, and it includes a syntax check of every playbook. It is configured in
+`.ansible-lint` at the repo root:
+
+- `exclude_paths: .venv/` — `ansible-lint` does not honour `.gitignore`, so without this it would lint the thousands
+  of files inside `ansible/.venv`.
+- `offline: true` — `ansible-lint` does not install anything itself; collections come only from the pinned
+  `ansible-galaxy collection install` step. (Its working directory `.ansible/` is git-ignored.)
 
 ## Running locally with Terraform
 
@@ -640,7 +702,7 @@ CI runs on every pull request to `main` and on every push to `main`
 |---|---|
 | `lint` | `ruff check .` and `ruff format --check .` |
 | `test` | `pytest` for each of the four services (matrix job, after `lint`) |
-| `ansible` | syntax check and `ansible-lint` of the playbook |
+| `ansible` | installs the pinned tools and collections, then `ansible-lint ansible/` (includes a syntax check of every playbook) |
 | `shellcheck` | ShellCheck on every tracked `*.sh` file |
 | `images` | builds the Docker image of each of the four services (matrix job, after `test`) |
 

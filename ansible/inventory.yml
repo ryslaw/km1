@@ -1,0 +1,8 @@
+hypervisors:
+  hosts:
+    ubuntu1:
+    ubuntu2:
+
+local:
+  hosts:
+    localhost:
