@@ -1,0 +1,27 @@
+---
+- name: Create groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ users_groups }}"
+  become: true
+
+- name: Create users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    state: present
+    shell: /bin/bash
+    password_lock: true
+    groups: "{{ item.groups }}"
+    append: false
+  loop: "{{ users_accounts }}"
+  become: true
+
+- name: Add ssh access keys
+  ansible.posix.authorized_key:
+    key: "{{ item.ssh_public_key }}"
+    state: present
+    user: "{{ item.name }}"
+    exclusive: true
+  loop: "{{ users_accounts }}"
+  become: true

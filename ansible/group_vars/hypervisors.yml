@@ -1,0 +1,15 @@
+---
+users_groups:
+  - km1-operators
+  - km1-auditors
+
+users_accounts:
+  - name: kkrawczyk
+    groups: ["km1-operators"]
+    ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDS6gtvRSgavYhEabzOAy5bdLFCj+czbls64SrK/gfkq kkrawczyk@km1"
+  - name: akrawczyk
+    groups: ["km1-auditors", "adm"]
+    ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJKZEgAeG5CqSurSQDc4HcY8R3+WwnBfGWFRRvlk/3Hw akrawczyk@km1"
+  - name: svc-ansible
+    groups: []
+    ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMfn8p1P++qYOuVHaE2cMZWdVrgCwj9UcySqQP5yGKkH svc-ansible@km1"

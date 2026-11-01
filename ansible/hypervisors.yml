@@ -1,0 +1,7 @@
+---
+- name: Configure Hypervisor machines
+  hosts: hypervisors
+  connection: ssh
+  gather_facts: false
+  roles:
+    - users
