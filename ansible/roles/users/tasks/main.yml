@@ -25,3 +25,14 @@
     exclusive: true
   loop: "{{ users_accounts }}"
   become: true
+
+- name: Install sudo rules
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ users_sudoers }}"
+  become: true

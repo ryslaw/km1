@@ -20,3 +20,20 @@ users_groups: []
 #     groups: ["adm", "role_group1"]
 #     ssh_public_key: "ssh-ed25519 XYZ...XYZ jdoe@..."
 users_accounts: []
+
+# Sudo rules, one file in /etc/sudoers.d/ per entry, checked with visudo before it is installed.
+#   name       file name in /etc/sudoers.d/; no '.' and no trailing '~', or sudo silently ignores the file
+#   principal  who the rule is for: a group as "%group", or a single account
+#   commands   list of full command paths with exact arguments, or ["ALL"]; avoid wildcards
+#   runas      user the commands run as (optional, default: root)
+#   nopasswd   true to run the commands without a password (optional, default: false);
+#              accounts managed by this role have locked passwords, so they need it
+#
+# Removing an entry does not delete its file from the hosts.
+#
+# users_sudoers:
+#   - name: role_group1
+#     principal: "%role_group1"
+#     commands: ["/usr/bin/systemctl restart example"]
+#     nopasswd: true
+users_sudoers: []

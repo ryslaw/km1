@@ -13,3 +13,16 @@ users_accounts:
   - name: svc-ansible
     groups: []
     ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMfn8p1P++qYOuVHaE2cMZWdVrgCwj9UcySqQP5yGKkH svc-ansible@km1"
+
+users_sudoers:
+  - name: km1-operators
+    principal: "%km1-operators"
+    commands:
+      - /usr/bin/systemctl restart systemd-timesyncd
+    nopasswd: true
+  - name: svc-ansible
+    principal: "svc-ansible"
+    commands:
+      - ALL
+    nopasswd: true
+    runas: ALL

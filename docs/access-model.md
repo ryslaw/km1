@@ -44,20 +44,28 @@ the first name followed by the last name. Each identity has the same name on eve
 
 ### Physical hosts (ubuntu1, ubuntu2)
 
-Managed by the `users` role in `ansible/roles/users/`, from `ansible/group_vars/hypervisors.yml`.
+Managed by the `users` role in `ansible/roles/users/`, from `ansible/group_vars/hypervisors.yml`: role groups
+from `users_groups`, accounts from `users_accounts`, and sudo rules from `users_sudoers`. Each sudo rule is one
+file in `/etc/sudoers.d/` (owner `root:root`, mode `0440`), checked with `visudo` before it is installed.
 
 | Identity      | Login        | Groups                   | sudo |
 |---------------|--------------|--------------------------|------|
-| `kkrawczyk`   | SSH key only | `km1-operators`          | *planned (#39): one narrow rule granted to `%km1-operators`* |
+| `kkrawczyk`   | SSH key only | `km1-operators`          | through `%km1-operators`: `/usr/bin/systemctl restart systemd-timesyncd` as root, without a password |
 | `akrawczyk`   | SSH key only | `km1-auditors`, `adm`    | none |
-| `svc-ansible` | SSH key only | —                        | *TBD (#39): the rights Ansible needs* |
+| `svc-ansible` | SSH key only | —                        | every command as any user, without a password (see F4) |
 | `ryslaw`      | password and SSH key | ubuntu1: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `docker`; ubuntu2: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd` | full, with password (`sudo` group) |
 
 What each right is for:
 
 - `adm` lets the auditor read the logs in `/var/log`, including `auth.log`, without changing anything.
-- `km1-operators` and `km1-auditors` grant nothing by themselves yet. They identify the role, and sudoers
-  rules are attached to them.
+- The operator may restart time synchronisation (`systemd-timesyncd`), a routine runbook step when the clock
+  drifts. The rule names the exact arguments, so any other `systemctl` action is refused, including `status`,
+  whose pager could otherwise be used to escape to a shell. It needs `NOPASSWD` because the persona's password
+  is locked; a stolen operator key gives this one command and nothing more.
+- `svc-ansible` needs unrestricted root. Ansible runs its module code through `sudo /bin/sh -c ...`, so a list of
+  allowed commands cannot work. The rule allows any target user (`(ALL)`) because a task may become a user
+  other than root.
+- `km1-auditors` grants nothing by itself. It identifies the role, so rules can be attached to it later.
 
 ## Secrets
 
@@ -81,7 +89,8 @@ run the playbook as `ryslaw` (the bootstrap run).
 | F1 | `ryslaw` is in the `docker` group on ubuntu1 | Root-equivalent: anyone with this account can start a privileged container without a password | Accepted for now: k3d runs on ubuntu1. Revisit when k3d is retired |
 | F2 | `ryslaw` is in the `lxd` group on both hosts, but LXD is not installed | None today. It becomes root-equivalent if LXD is installed again | Remove the membership when the personal account is cleaned up |
 | F3 | The private keys of all personas and of `svc-ansible` are in the home directory of `ryslaw` on ubuntu1 | Whoever controls `ryslaw` on ubuntu1 can act as every other identity | Accepted in the lab: the personas are fictional. The `svc-ansible` key moves to AWX in phase 10 |
-| F4 | `svc-ansible` sudo rights | *TBD (#39)* | *TBD (#39)* |
+| F4 | `svc-ansible` can run every command as root without a password | Root-equivalent: whoever holds its private key controls both hosts | Accepted: the usual compromise for a configuration management account. Mitigated by key-only login, a locked password, and a private key that never leaves the control node (see F3). Revisit with AWX in phase 10 |
+| F5 | A refused `sudo -n` attempt leaves no trace in `auth.log` | The auditor sees every command run through sudo, but not every refused attempt | Accepted for now. Revisit with central logging in phase 15 |
 
 ## Verification
 
@@ -98,9 +107,24 @@ ssh -i ~/.ssh/km1-svc-ansible svc-ansible@192.168.100.31 whoami
 # The auditor can read logs
 ssh -i ~/.ssh/km1-akrawczyk akrawczyk@192.168.100.31 'tail -n 1 /var/log/auth.log'
 
-# The auditor has no sudo rules: expect "User akrawczyk is not allowed to run sudo on ..."
-# (sudo -l run by the auditor proves nothing: the locked password stops it before any rule is checked)
-ssh -t ryslaw@192.168.100.31 sudo -l -U akrawczyk
+# Sudo rules as sudo itself sees them (run by ryslaw): one rule for the operator, none for the auditor,
+# and ALL for svc-ansible. sudo -l run by a persona proves nothing: the locked password stops it
+# before any rule is checked.
+ssh -t ryslaw@192.168.100.31 'sudo -l -U kkrawczyk; sudo -l -U akrawczyk; sudo -l -U svc-ansible'
+
+# The operator's rule works...
+ssh -i ~/.ssh/km1-kkrawczyk kkrawczyk@192.168.100.31 'sudo -n /usr/bin/systemctl restart systemd-timesyncd && echo OK'
+
+# ...and nothing else does: expect "a password is required" and exit code 1 each time
+ssh -i ~/.ssh/km1-kkrawczyk kkrawczyk@192.168.100.31 \
+  'sudo -n /usr/bin/systemctl status systemd-timesyncd; echo $?; sudo -n /usr/bin/id; echo $?; sudo -n -i; echo $?'
+
+# Only the allowed command opened a root session (checked by the auditor)
+ssh -i ~/.ssh/km1-akrawczyk akrawczyk@192.168.100.31 'grep "sudo:.*kkrawczyk" /var/log/auth.log | tail -n 5'
+
+# svc-ansible has passwordless sudo
+ssh -i ~/.ssh/km1-svc-ansible svc-ansible@192.168.100.31 'sudo -n true && echo OK'
 ```
 
-The negative `sudo -l` tests for the operator are added together with the sudoers rules (#39).
+A refused `sudo -n` attempt is not logged (F5), so the negative tests rely on `sudo -l -U` and on the exit
+codes, not on the log.
