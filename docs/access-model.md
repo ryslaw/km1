@@ -38,15 +38,17 @@ the first name followed by the last name. Each identity has the same name on eve
 
 | Account       | Used by | Purpose |
 |---------------|---------|---------|
-| `svc-ansible` | Ansible on the control node (ubuntu1) | Runs all playbooks against the physical hosts after the bootstrap run |
+| `svc-ansible` | Ansible on the control node (ubuntu1) | Runs all playbooks against the physical hosts. It is created and repaired by the bootstrap run as `ryslaw` |
 
 ## Access matrix
 
 ### Physical hosts (ubuntu1, ubuntu2)
 
-Managed by the `users` role in `ansible/roles/users/`, from `ansible/group_vars/hypervisors.yml`: role groups
-from `users_groups`, accounts from `users_accounts`, and sudo rules from `users_sudoers`. Each sudo rule is one
-file in `/etc/sudoers.d/` (owner `root:root`, mode `0440`), checked with `visudo` before it is installed.
+Managed by the `users` role in `ansible/roles/users/`, from `ansible/group_vars/hypervisors/users.yml`: role
+groups from `users_groups`, accounts from `users_accounts`, and sudo rules from `users_sudoers`. Each sudo rule is
+one file in `/etc/sudoers.d/` (owner `root:root`, mode `0440`), checked with `visudo` before it is installed.
+Access is revoked by setting the entry's `state` to `absent` and running the playbook. Only then is the entry
+removed from the list (see F6).
 
 | Identity      | Login        | Groups                   | sudo |
 |---------------|--------------|--------------------------|------|
@@ -69,7 +71,7 @@ What each right is for:
 
 ## Secrets
 
-Where the secret of each identity lives. Public keys are committed in `ansible/group_vars/hypervisors.yml`.
+Where the secret of each identity lives. Public keys are committed in `ansible/group_vars/hypervisors/users.yml`.
 Private keys are never committed.
 
 | Identity      | Secret | Location | Protection |
@@ -80,7 +82,8 @@ Private keys are never committed.
 | `ryslaw`      | SSH private key | `~/.ssh/km1-hypervisors` on ubuntu1 | passphrase, file mode 0600 |
 
 A lost key is replaced, not recovered: generate a new key pair, replace the public key in the variables, and
-run the playbook as `ryslaw` (the bootstrap run).
+run the playbook. If the lost key belongs to `svc-ansible`, use the bootstrap run as `ryslaw` (see
+[Managing accounts and sudo rules on the physical hosts](../README.md#managing-accounts-and-sudo-rules-on-the-physical-hosts)).
 
 ## Findings and accepted risks
 
@@ -91,6 +94,7 @@ run the playbook as `ryslaw` (the bootstrap run).
 | F3 | The private keys of all personas and of `svc-ansible` are in the home directory of `ryslaw` on ubuntu1 | Whoever controls `ryslaw` on ubuntu1 can act as every other identity | Accepted in the lab: the personas are fictional. The `svc-ansible` key moves to AWX in phase 10 |
 | F4 | `svc-ansible` can run every command as root without a password | Root-equivalent: whoever holds its private key controls both hosts | Accepted: the usual compromise for a configuration management account. Mitigated by key-only login, a locked password, and a private key that never leaves the control node (see F3). Revisit with AWX in phase 10 |
 | F5 | A refused `sudo -n` attempt leaves no trace in `auth.log` | The auditor sees every command run through sudo, but not every refused attempt | Accepted for now. Revisit with central logging in phase 15 |
+| F6 | An account or sudo rule whose entry is deleted from the list stays on the hosts | Orphaned access: a person who left keeps their login and rights, and nothing in the repo shows it | Accepted: revoking is an explicit step (`state: absent`, run, then delete the entry), documented in the role defaults and the README. Revisit if the role gets a mode that removes everything not listed |
 
 ## Verification
 
@@ -124,6 +128,10 @@ ssh -i ~/.ssh/km1-akrawczyk akrawczyk@192.168.100.31 'grep "sudo:.*kkrawczyk" /v
 
 # svc-ansible has passwordless sudo
 ssh -i ~/.ssh/km1-svc-ansible svc-ansible@192.168.100.31 'sudo -n true && echo OK'
+
+# After revoking an account and its rule (state: absent, then a playbook run): no passwd or group entry,
+# "No such file or directory" for the home directory, and no rule file left in /etc/sudoers.d/
+ssh -t ryslaw@192.168.100.31 'getent passwd olduser; getent group olduser; ls -d /home/olduser; ls /etc/sudoers.d/'
 ```
 
 A refused `sudo -n` attempt is not logged (F5), so the negative tests rely on `sudo -l -U` and on the exit

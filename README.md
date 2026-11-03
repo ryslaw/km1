@@ -83,8 +83,10 @@ ansible-galaxy collection install -r ansible/requirements.yml
 | `local` | `localhost` | local |
 
 `ansible/inventory.yml` only says which host belongs to which group. How to reach each host lives in
-`ansible/host_vars/` (`ansible_host`, `ansible_connection`), and settings shared by all hosts live in
-`ansible/group_vars/all.yml` (`ansible_user`, `ansible_python_interpreter`). Check the merged result with:
+`ansible/host_vars/` (`ansible_host`, `ansible_connection`). Settings shared by all hosts live in
+`ansible/group_vars/all.yml` (`ansible_python_interpreter`). Settings for one group live in a directory named
+after the group, for example `ansible/group_vars/hypervisors/`: `connection.yml` holds the SSH account and key,
+and `users.yml` holds the accounts and sudo rules. Check the merged result with:
 
 ```
 ansible-inventory --graph
@@ -93,21 +95,68 @@ ansible-inventory --host ubuntu1
 
 ### Reaching the physical hosts
 
-`ubuntu1` is the control node. Ansible connects to the `hypervisors` group over SSH with a dedicated,
-passphrase-protected key; `~/.ssh/config` maps both host addresses to that key (`IdentitiesOnly yes`,
-`AddKeysToAgent yes`). Host key checking stays on: before the first connection, verify each host's key fingerprint
-out-of-band and accept it with a manual `ssh`.
+`ubuntu1` is the control node. Ansible connects to the `hypervisors` group as the technical account `svc-ansible`,
+with its own key `~/.ssh/km1-svc-ansible` (set in `ansible/group_vars/hypervisors/connection.yml`). The key has no
+passphrase, because automation cannot type one, and `svc-ansible` has passwordless sudo. A normal run therefore
+needs neither an SSH agent nor `-K`. Host key checking stays on: before the first connection, verify each host's
+key fingerprint out-of-band and accept it with a manual `ssh`.
 
-Start an agent in each new shell, then check connectivity and privilege escalation:
+Check connectivity and privilege escalation:
+
+```
+ansible hypervisors -m ansible.builtin.ping
+ansible hypervisors -b -m ansible.builtin.command -a id
+```
+
+`-b` runs the module via `sudo`, so the second command should report `uid=0(root)` on both hosts. The personal
+account `ryslaw` is used only for the bootstrap run (see below).
+
+### Managing accounts and sudo rules on the physical hosts
+
+`ansible/hypervisors.yml` applies the `users` role to the `hypervisors` group. The role reads three lists from
+`ansible/group_vars/hypervisors/users.yml`: role groups (`users_groups`), accounts with their SSH public keys
+(`users_accounts`), and sudo rules (`users_sudoers`). The fields of each list are described in
+`ansible/roles/users/defaults/main.yml`. Who gets which right, and why, is recorded in
+[docs/access-model.md](docs/access-model.md).
+
+A normal run uses `svc-ansible`:
+
+```
+ansible-playbook ansible/hypervisors.yml --check --diff   # preview the changes
+ansible-playbook ansible/hypervisors.yml
+```
+
+Running it again should report `changed=0` on both hosts.
+
+**Bootstrap run.** `svc-ansible` is created by this same playbook, so the first run on a new host has to use the
+personal account `ryslaw`. The same run also repairs `svc-ansible` if it has lost its key or its sudo rule. The key
+`~/.ssh/km1-hypervisors` is passphrase-protected, and Ansible cannot ask for a passphrase, so load the key into an
+agent first:
 
 ```
 eval "$(ssh-agent -s)"
-ansible hypervisors -m ansible.builtin.ping
-ansible hypervisors -b -K -m ansible.builtin.command -a id
+ssh-add ~/.ssh/km1-hypervisors
+ansible-playbook -K -e ansible_user=ryslaw -e ansible_ssh_private_key_file=~/.ssh/km1-hypervisors ansible/hypervisors.yml
 ```
 
-`-b` runs the module via `sudo` and `-K` asks for the sudo password; the second command should report `uid=0(root)`
-on both hosts.
+Extra vars (`-e`) have the highest precedence, so for this one run they override the account and key from
+`connection.yml`. `-K` asks for the sudo password of `ryslaw`. If the run fails with `Permission denied
+(publickey)`, check with `ssh-add -l` that the key is in the agent. If `ryslaw` cannot log in either, the only way
+back is the host's console.
+
+**Removing an account or a sudo rule.** Deleting an entry from the list deletes nothing on the hosts, because the
+role leaves unlisted accounts and rules alone. Instead, set the entry's `state` to `absent`, run the playbook, and
+remove the entry only after the run:
+
+```yaml
+users_accounts:
+  - name: olduser
+    state: absent
+```
+
+An absent account is deleted together with its home directory and its primary f
+that account first, because a running process blocks the deletion. An absent sudo rule deletes its file in
+`/etc/sudoers.d/`.
 
 ### Running the Compose stack with Ansible
 
