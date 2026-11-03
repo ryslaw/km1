@@ -1,0 +1,53 @@
+---
+# Role groups (supplementary groups, not system ones), created before the accounts.
+# users_groups:
+#   - role_group1
+#   - role_group2
+users_groups: []
+
+# Accounts managed by this role.
+#   name            login name (required)
+#   state           present or absent (optional, default: present); absent deletes the account,
+#                   its home directory, and its primary group
+#   groups          full list of supplementary groups (required when present); the account is removed
+#                   from any group not listed, and the primary group (same name as the login) is created
+#                   automatically
+#   ssh_public_key  the only key allowed to log in (required when present); any other key in
+#                   authorized_keys is removed
+#
+# Every group must already exist: either a system group or one listed in users_groups.
+# Passwords are locked, so the accounts log in with their SSH key only.
+# Accounts not listed here are left untouched: to delete an account, set state to absent first,
+# and remove its entry only after the playbook has run.
+# A running process (for example an open SSH session) prevents the account from being deleted.
+#
+# users_accounts:
+#   - name: jdoe
+#     groups: ["adm", "role_group1"]
+#     ssh_public_key: "ssh-ed25519 XYZ...XYZ jdoe@example"
+#   - name: olduser
+#     state: absent
+users_accounts: []
+
+# Sudo rules, one file in /etc/sudoers.d/ per entry, checked with visudo before it is installed.
+#   name       file name in /etc/sudoers.d/ (required); no '.' and no trailing '~', or sudo silently
+#              ignores the file
+#   state      present or absent (optional, default: present); absent deletes the file
+#   principal  who the rule is for (required when present): a group as "%group", or a single account
+#   commands   list of full command paths with exact arguments, or ["ALL"] (required when present);
+#              avoid wildcards
+#   runas      user the commands run as (optional, default: root)
+#   nopasswd   true to run the commands without a password (optional, default: false);
+#              accounts managed by this role have locked passwords, so they need it
+#
+# Rules not listed here are left untouched: to delete a rule, set state to absent first, and remove
+# its entry only after the playbook has run.
+#
+# users_sudoers:
+#   - name: role_group1
+#     principal: "%role_group1"
+#     commands: ["/usr/bin/systemctl restart example"]
+#     nopasswd: true
+#   - name: oldrule
+#     state: absent
+users_sudoers: []

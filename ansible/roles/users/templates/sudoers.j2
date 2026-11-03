@@ -1,0 +1,2 @@
+# {{ ansible_managed }}
+{{ item.principal }} ALL=({{ item.runas | default("root") }}) {% if item.nopasswd | default(false) %}NOPASSWD: {% endif %}{{ item.commands | join(", ") }}

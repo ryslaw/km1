@@ -1,0 +1,49 @@
+---
+- name: Create groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ users_groups }}"
+  become: true
+
+- name: Manage user accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    state: "{{ item.state | default('present') }}"
+    shell: /bin/bash
+    password_lock: true
+    groups: "{{ item.groups | default([]) }}"
+    append: false
+    remove: true
+  loop: "{{ users_accounts }}"
+  become: true
+
+- name: Manage ssh access keys
+  ansible.posix.authorized_key:
+    key: "{{ item.ssh_public_key }}"
+    state: present
+    user: "{{ item.name }}"
+    exclusive: true
+  loop: "{{ users_accounts }}"
+  become: true
+  when: item.state | default("present") != "absent"
+
+- name: Install sudo rules
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ users_sudoers }}"
+  become: true
+  when: item.state | default("present") != "absent"
+
+- name: Remove unused sudo rules
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ item.name }}"
+    state: absent
+  loop: "{{ users_sudoers }}"
+  become: true
+  when: item.state | default("present") == "absent"
