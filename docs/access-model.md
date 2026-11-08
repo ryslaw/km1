@@ -83,7 +83,7 @@ Private keys are never committed.
 
 A lost key is replaced, not recovered: generate a new key pair, replace the public key in the variables, and
 run the playbook. If the lost key belongs to `svc-ansible`, use the bootstrap run as `ryslaw` (see
-[Managing accounts and sudo rules on the physical hosts](../README.md#managing-accounts-and-sudo-rules-on-the-physical-hosts)).
+[Managing accounts and sudo rules on the physical hosts](../ansible/README.md#managing-accounts-and-sudo-rules-on-the-physical-hosts)).
 
 ## Findings and accepted risks
 
