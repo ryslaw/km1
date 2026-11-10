@@ -4,9 +4,39 @@
 
 A small e-commerce-style microservices system used as a hands-on playground for building DevOps skills: containerization, CI/CD, configuration management, infrastructure as code, Kubernetes, and observability — layered incrementally on top of an existing application.
 
+**Status:** actively developed since September 2026 — currently in
+[Phase 9: Ansible on real Linux hosts](https://github.com/ryslaw/km1/milestone/10).
+Every change is tracked as an [issue](https://github.com/ryslaw/km1/issues?q=is%3Aissue) and delivered through a
+[pull request](https://github.com/ryslaw/km1/pulls?q=is%3Apr+is%3Amerged).
+
+## What this project demonstrates
+
+- **Continuous Integration** — every pull request runs ruff, pytest across a four-service matrix, ansible-lint,
+  ShellCheck and the container image builds; images are pushed to GHCR from `main` only, tagged with the commit SHA.
+- **GitOps** — Argo CD syncs `k8s/` from `main`; deploying a new version means changing an image tag in a pull
+  request, with no `kubectl` command.
+- **Kubernetes** — a k3d cluster with Traefik Ingress, liveness and readiness probes, and chaos endpoints for
+  drilling database outages.
+- **Observability** — Prometheus metrics in every service, ServiceMonitors, and a Grafana dashboard kept as code.
+- **Infrastructure as Code & configuration management** — the stack on local Docker with Terraform; Ansible run from
+  pinned versions against physical Ubuntu hosts, with user accounts and sudo rules managed as code.
+- **Least privilege** — separate admin, operator, auditor and automation accounts with a documented
+  [access model](docs/access-model.md), and job-level token permissions in CI.
+
 ## Architecture
 
 Four Python services, each independently containerized:
+
+```mermaid
+flowchart LR
+  client((Client)) --> order[order-service]
+  order --> usersvc[user-service]
+  order --> product[product-service]
+  status[status-page] -. "/health" .-> usersvc & product & order
+  usersvc --> udb[(PostgreSQL)]
+  product --> pdb[(PostgreSQL)]
+  order --> odb[(PostgreSQL)]
+```
 
 | Service | Description | Depends on |
 |---|---|---|
@@ -17,6 +47,19 @@ Four Python services, each independently containerized:
 
 The endpoints of each service (`/health`, `/livez`, `/metrics`, `/chaos/*`) are described in
 [services/README.md](services/README.md#endpoints).
+
+## Delivery pipeline
+
+```mermaid
+flowchart LR
+  pr["Issue → branch → pull request"] --> ci["GitHub Actions<br/>ruff · pytest · ansible-lint · ShellCheck · image build"]
+  ci -->|squash merge| main[main]
+  main -->|"images tagged with the commit SHA"| ghcr[(GHCR)]
+  main -->|"Argo CD watches k8s/"| argo[Argo CD]
+  argo --> k3d[k3d cluster]
+  ghcr -->|pull| k3d
+  k3d --> prom["Prometheus + Grafana"]
+```
 
 ## Tech stack
 
@@ -60,7 +103,8 @@ Each area is documented next to its code. Run all commands from the repo root un
 
 ## Roadmap
 
-This project is developed milestone by milestone, each tracked as a GitHub Milestone with issues (✅ = done):
+This project is developed phase by phase, each tracked as a
+[GitHub Milestone](https://github.com/ryslaw/km1/milestones?state=all) with issues (✅ = done, 🚧 = in progress):
 
 0. ✅ Git/GitHub project foundation
 1. ✅ Docker Compose (all services running together locally)
@@ -71,7 +115,7 @@ This project is developed milestone by milestone, each tracked as a GitHub Miles
 6. ✅ Kubernetes deployment
 7. ✅ Observability (metrics & dashboards)
 8. ✅ GitOps & continuous delivery (Argo CD, container images in GHCR)
-9. Configuration management II: Ansible on real Linux hosts (roles, Vault, testing; a multi-node k3s cluster)
+9. 🚧 Configuration management II: Ansible on real Linux hosts (roles, Vault, testing; a multi-node k3s cluster)
 10. Automation platform: AWX
 11. Packaging & workload security (a Helm chart for km1, image scanning, pod hardening, per-service database roles)
 12. Cloud foundation: Google Cloud with Terraform (remote state, IAM, networking, keyless CI)
@@ -81,7 +125,21 @@ This project is developed milestone by milestone, each tracked as a GitHub Miles
 
 Throughout all phases: least privilege on every layer, both for people (admin, operator, developer and auditor roles) and for applications and automation (a dedicated technical account per application, pipeline and tool), and troubleshooting drills on deliberately broken scenarios.
 
-## Contributing
+## How I work
 
-This is a solo learning project with a lightweight PR review process. See `.github/PULL_REQUEST_TEMPLATE.md` and the issue templates under `.github/ISSUE_TEMPLATE/`. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
-A change that touches an area also updates that area's document from the [documentation map](#documentation).
+- Every change starts as an issue (see `.github/ISSUE_TEMPLATE/`) assigned to a phase milestone.
+- Each issue gets its own branch and pull request (see `.github/PULL_REQUEST_TEMPLATE.md`); `main` accepts changes
+  only through pull requests that pass CI, merged with squash.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
+- A change that touches an area also updates that area's document from the [documentation map](#documentation).
+
+## About AI assistance
+
+This project is built with an AI assistant (Claude) as a mentor. The application in `services/` is only the workload
+the infrastructure runs, and its code is AI-generated. The infrastructure, automation and CI/CD code (Docker,
+GitHub Actions, Ansible, Terraform, Kubernetes, Helm, Argo CD) is written by me, with the assistant reviewing it,
+giving hints and pointing to documentation. The documentation is drafted with AI assistance.
+
+## License
+
+[MIT](LICENSE)
