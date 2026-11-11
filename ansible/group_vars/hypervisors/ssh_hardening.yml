@@ -1,3 +1,4 @@
+---
 # ssh_hardening_allow_groups:
 #   - km1-operators
 #   - km1-auditors
