@@ -6,6 +6,15 @@
   loop: "{{ users_groups }}"
   become: true
 
+- name: Check if unmanaged users exist
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ item.name }}"
+    fail_key: true
+  loop: "{{ users_group_memberships }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Manage user accounts
   ansible.builtin.user:
     name: "{{ item.name }}"
@@ -47,3 +56,13 @@
   loop: "{{ users_sudoers }}"
   become: true
   when: item.state | default("present") == "absent"
+
+- name: Add unmanaged users to groups
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ item.groups }}"
+    append: true
+  loop: "{{ users_group_memberships }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
