@@ -56,15 +56,15 @@ In this repository the list is set in `ansible/group_vars/hypervisors/ssh_harden
    group exists and that `ansible_user` is a member of at least one of them. If not, the play fails before the
    drop-in is written.
    Limitation: the check sees supplementary members only, because `getent group` does not list members whose
-   primary group it is, while sshd also accepts the primary group. The check hat
+   primary group it is, while sshd also accepts the primary group. The check may therefore refuse a list that
    sshd would accept, but it never accepts a list that would lock Ansible out.
-2. **Validation of the drop-in.** The template is checked with `sshd -t -f <t
+2. **Validation of the drop-in.** The template is checked with `sshd -t -f <temporary file>` before it is
    installed. This checks the drop-in as if it were the whole configuration: option names and values. If the
    check fails, the file on the host is not touched.
 3. **Reload, not restart.** A changed file notifies a handler that reloads `ssh.service`. systemd first runs
-   `sshd -t` on the whole configuration (including `Include`) and sends `SIGHt
+   `sshd -t` on the whole configuration (including `Include`) and sends `SIGHUP` only if that passes. If it
    fails, the running sshd keeps its old configuration and the play fails. The new file is already on disk
-   then: fix it before the next reboot or restart of sshd. Open sessions surv
+   then: fix it before the next reboot or restart of sshd. Open sessions survive a reload.
 4. **A failed handler loses its notification.** On the next run the file is already in place, so the task
    reports `ok` and nothing reloads sshd. Reload it once by hand:
 
@@ -72,7 +72,7 @@ In this repository the list is set in `ansible/group_vars/hypervisors/ssh_harden
    ansible <host> -b -m ansible.builtin.systemd_service -a "name=ssh state=reloaded"
    ```
 
-`--check` does not run the validation in step 2, because the file is not writeck
+`--check` does not run the validation in step 2, because the file is not written in check mode. A clean check
 run does not prove that the drop-in is valid.
 
 ## Dependencies
@@ -92,6 +92,6 @@ them and runs first.
     - ssh_hardening
 ```
 
-`users` runs first, so the group memberships exist before `AllowGroups` takes
+`users` runs first, so the group memberships exist before `AllowGroups` takes effect. How to roll out and
 verify a change is described in
-[SSH policy on the physical hosts](../../README.md#ssh-policy-on-the-physical
+[SSH policy on the physical hosts](../../README.md#ssh-policy-on-the-physical-hosts).

@@ -31,7 +31,8 @@ ansible-galaxy collection install -r ansible/requirements.yml
 `ansible/host_vars/` (`ansible_host`, `ansible_connection`). Settings shared by all hosts live in
 `ansible/group_vars/all.yml` (`ansible_python_interpreter`). Settings for one group live in a directory named
 after the group, for example `ansible/group_vars/hypervisors/`: `connection.yml` holds the SSH account and key,
-`users.yml` holds the accounts and sudo rules, and `ssh_hardening.yml` holds the SSH login policy. Check the merged result with:
+`users.yml` holds the accounts and sudo rules, and `ssh_hardening.yml` holds the SSH login policy. Check the merged
+result with:
 
 ```
 ansible-inventory --graph
@@ -59,9 +60,10 @@ account `ryslaw` is used only for the bootstrap run (see below).
 ## Managing accounts and sudo rules on the physical hosts
 
 `ansible/hypervisors.yml` applies the `users` role, then the `ssh_hardening` role (see
-[SSH policy on the physical hosts](#ssh-policy-on-the-physical-hosts)), to the `hypervisors` group. The role reads three lists from
-`ansible/group_vars/hypervisors/users.yml`: role groups (`users_groups`), accounts with their SSH public keys
-(`users_accounts`), and sudo rules (`users_sudoers`). The fields of each list are described in the
+[SSH policy on the physical hosts](#ssh-policy-on-the-physical-hosts)), to the `hypervisors` group. The `users`
+role reads four lists from `ansible/group_vars/hypervisors/users.yml`: role groups (`users_groups`), accounts
+with their SSH public keys (`users_accounts`), sudo rules (`users_sudoers`), and extra groups for accounts it
+does not manage (`users_group_memberships`). The fields of each list are described in the
 [users role README](roles/users/README.md#role-variables). Who gets which right, and why, is recorded in
 [docs/access-model.md](../docs/access-model.md).
 
@@ -88,8 +90,8 @@ ansible-playbook -K -e ansible_user=ryslaw -e ansible_ssh_private_key_file=~/.ss
 Extra vars (`-e`) have the highest precedence, so for this one run they override the account and key from
 `connection.yml`. `-K` asks for the sudo password of `ryslaw`. If the run fails with `Permission denied
 (publickey)`, check with `ssh-add -l` that the key is in the agent. If `ryslaw` cannot log in either, the only way
-back is the host's console. On a host where the SSH policy is already in place, the bootstrap run still works: `ryslaw` logs in with a key
-and is a member of `km1-ssh-users`.
+back is the host's console. On a host where the SSH policy is already in place, the bootstrap run still works: `ryslaw`
+logs in with a key and is a member of `km1-ssh-users`.
 
 **Removing an account or a sudo rule.** Deleting an entry from the list deletes nothing on the hosts; see
 [Removing an account or a sudo rule](roles/users/README.md#removing-an-account-or-a-sudo-rule).
@@ -164,9 +166,9 @@ cat new-workstation.pub | ssh ubuntu1 'cat >> ~/.ssh/authorized_keys'
 cat new-workstation.pub | ssh ubuntu2 'cat >> ~/.ssh/authorized_keys'
 ```
 
-Give each workstation its own key, with a comment naming it (`ryslaw@<workstat
+Give each workstation its own key, with a comment naming it (`ryslaw@<workstation>-km1`), so a single
 workstation can be revoked. The keys of `ryslaw` are not managed by Ansible: when a workstation is retired,
-remove its line from `authorized_keys` on both hosts by hand. Without a workinrom
+remove its line from `authorized_keys` on both hosts by hand. Without a working workstation, add the key from
 the host's console.
 
 ## Running the Compose stack with Ansible
