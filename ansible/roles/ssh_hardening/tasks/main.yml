@@ -1,4 +1,22 @@
 ---
+- name: Check that the restriction will not lock out the Ansible user
+  when: ssh_hardening_allow_groups | length > 0
+  block:
+    - name: Check groups
+      ansible.builtin.getent:
+        database: group
+
+    - name: Check if groups from ssh_hardening_allow_groups exist
+      ansible.builtin.assert:
+        that: ansible_facts.getent_group[item] is defined
+        fail_msg: Group {{ item }} does not exist
+      loop: "{{ ssh_hardening_allow_groups }}"
+
+    - name: Check if current ansible user is a member of a group in ssh_hardening_allow_groups
+      ansible.builtin.assert:
+        that: ansible_user in (ssh_hardening_allow_groups | map('extract', ansible_facts.getent_group, 2) | map('split', ',') | flatten)
+        fail_msg: "Account {{ ansible_user }} is not a member of any of the groups: {{ ssh_hardening_allow_groups | join(', ') }}"
+
 - name: Set sshd config
   ansible.builtin.template:
     src: 40-km1-hardening.conf.j2
