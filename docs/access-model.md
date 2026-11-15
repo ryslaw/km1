@@ -32,7 +32,7 @@ the first name followed by the last name. Each identity has the same name on eve
 | `akrawczyk` | Alina Krawczyk  | auditor   | `km1-auditors`   | active  |
 | `tnorek`    | Tadeusz Norek   | developer | `km1-developers` | planned |
 | `dnorek`    | Danuta Norek    | admin     | `km1-admins`     | planned |
-| `ryslaw`    | project owner   | admin (bootstrap) | —        | active, not managed by Ansible |
+| `ryslaw`    | project owner   | admin (bootstrap) | —        | active, not managed by Ansible (only its membership in `km1-ssh-users`) |
 
 ### Technical accounts
 
@@ -50,12 +50,17 @@ one file in `/etc/sudoers.d/` (owner `root:root`, mode `0440`), checked with `vi
 Access is revoked by setting the entry's `state` to `absent` and running the playbook. Only then is the entry
 removed from the list (see F6).
 
+SSH logins are limited by the `ssh_hardening` role, from `ansible/group_vars/hypervisors/ssh_hardening.yml`:
+SSH key only, no `root` login, and only members of `km1-ssh-users`
+(see [SSH policy on the physical hosts](../ansible/README.md#ssh-policy-on-the-physical-hosts)).
+
 | Identity      | Login        | Groups                   | sudo |
 |---------------|--------------|--------------------------|------|
-| `kkrawczyk`   | SSH key only | `km1-operators`          | through `%km1-operators`: `/usr/bin/systemctl restart systemd-timesyncd` as root, without a password |
-| `akrawczyk`   | SSH key only | `km1-auditors`, `adm`    | none |
-| `svc-ansible` | SSH key only | —                        | every command as any user, without a password (see F4) |
-| `ryslaw`      | password and SSH key | ubuntu1: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `docker`; ubuntu2: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd` | full, with password (`sudo` group) |
+| `kkrawczyk`   | SSH key only | `km1-operators`, `km1-ssh-users` | through `%km1-operators`: `/usr/bin/systemctl restart systemd-timesyncd` as root, without a password |
+| `akrawczyk`   | SSH key only | `km1-auditors`, `adm`, `km1-ssh-users` | none |
+| `svc-ansible` | SSH key only | `km1-ssh-users`          | every command as any user, without a password (see F4) |
+| `ryslaw`      | SSH key only; password for `sudo` and the console | ubuntu1: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `docker`, `km1-ssh-users`; ubuntu2: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `km1-ssh-users` | full, with password (`sudo` group) |
+| `root`        | none (SSH refused) | — | — |
 
 What each right is for:
 
@@ -68,6 +73,11 @@ What each right is for:
   allowed commands cannot work. The rule allows any target user (`(ALL)`) because a task may become a user
   other than root.
 - `km1-auditors` grants nothing by itself. It identifies the role, so rules can be attached to it later.
+- `km1-ssh-users` is the only group allowed to log in over SSH (`AllowGroups`). It grants nothing else, so
+  the right to log in is separate from every other right. Membership is set in the account list, or through
+  `users_group_memberships` for `ryslaw`.
+- `root` cannot log in over SSH at all. Two rules refuse it independently: `AllowGroups` (root is not in
+  `km1-ssh-users`) and `PermitRootLogin no`.
 
 ## Secrets
 
@@ -80,6 +90,7 @@ Private keys are never committed.
 | `akrawczyk`   | SSH private key | `~/.ssh/km1-akrawczyk` of `ryslaw` on ubuntu1 | passphrase, file mode 0600 |
 | `svc-ansible` | SSH private key | `~/.ssh/km1-svc-ansible` of `ryslaw` on ubuntu1 | file mode 0600 only (no passphrase, since automation cannot type one) |
 | `ryslaw`      | SSH private key | `~/.ssh/km1-hypervisors` on ubuntu1 | passphrase, file mode 0600 |
+| `ryslaw`      | SSH private key | `%USERPROFILE%\.ssh\km1-hypervisors` on the Windows workstation | passphrase; loaded once into the Windows ssh-agent (see F8) |
 
 A lost key is replaced, not recovered: generate a new key pair, replace the public key in the variables, and
 run the playbook. If the lost key belongs to `svc-ansible`, use the bootstrap run as `ryslaw` (see
@@ -95,6 +106,8 @@ run the playbook. If the lost key belongs to `svc-ansible`, use the bootstrap ru
 | F4 | `svc-ansible` can run every command as root without a password | Root-equivalent: whoever holds its private key controls both hosts | Accepted: the usual compromise for a configuration management account. Mitigated by key-only login, a locked password, and a private key that never leaves the control node (see F3). Revisit with AWX in phase 10 |
 | F5 | A refused `sudo -n` attempt leaves no trace in `auth.log` | The auditor sees every command run through sudo, but not every refused attempt | Accepted for now. Revisit with central logging in phase 15 |
 | F6 | An account or sudo rule whose entry is deleted from the list stays on the hosts | Orphaned access: a person who left keeps their login and rights, and nothing in the repo shows it | Accepted: revoking is an explicit step (`state: absent`, run, then delete the entry), documented in the role defaults and the README. Revisit if the role gets a mode that removes everything not listed |
+| F7 | The SSH keys of `ryslaw` are not managed by Ansible | The key of a retired or lost workstation keeps working until someone removes it by hand, and nothing in the repo shows it | Accepted: `ryslaw` is the bootstrap and break-glass admin, and its keys must not depend on Ansible working. Review `~/.ssh/authorized_keys` of `ryslaw` on both hosts when a workstation is retired. Revisit when the planned admin persona `dnorek` exists |
+| F8 | The Windows ssh-agent keeps the key of `ryslaw` across reboots | Anyone signed in to the workstation as that Windows user can use the key without the passphrase | Accepted: the workstation is personal and locked when unattended. Revisit if the workstation is shared |
 
 ## Verification
 
@@ -136,3 +149,43 @@ ssh -t ryslaw@192.168.100.31 'getent passwd olduser; getent group olduser; ls -d
 
 A refused `sudo -n` attempt is not logged (F5), so the negative tests rely on `sudo -l -U` and on the exit
 codes, not on the log.
+
+### SSH policy
+
+The positive tests and the password test are in
+[Verifying the policy](../ansible/README.md#verifying-the-policy). The two tests below change the host
+for a few minutes. Run them from a root shell (`sudo -i`) on the host, and undo every step right after.
+
+**An account outside `km1-ssh-users` is refused, even with a valid key.** Add a temporary account with a key
+and `groups: []` to `users_accounts` (in the working tree only, never committed), run the playbook, and try to
+log in. Expect `Permission denied (publickey)` and this line in the log:
+
+```
+sudo journalctl -u ssh --since "-10 min" | grep -E 'not allowed|ROOT LOGIN'
+# User tmpuser from <address> not allowed because none of user's groups are listed in AllowGroups
+```
+
+Then add `km1-ssh-users` to its groups, run again, and check that the same key now logs in: the refusal came
+from the group, not from the key. Clean up with `state: absent`, a run, and removing the entry
+(`git diff` must be empty).
+
+**`root` is refused by `PermitRootLogin`, not only by `AllowGroups`.** `AllowGroups` refuses `root` before
+`PermitRootLogin` is checked, and `ROOT LOGIN REFUSED` is logged only when the login would otherwise succeed.
+To test `PermitRootLogin` on its own, `root` needs a valid key and a membership in `km1-ssh-users`:
+
+```sh
+ls -la /root/.ssh/                                  # note the state before the test
+cp -a /root/.ssh/authorized_keys /root/authorized_keys.bak 2>/dev/null; true
+grep '<workstation key comment>' /home/ryslaw/.ssh/authorized_keys >> /root/.ssh/authorized_keys
+usermod -aG km1-ssh-users root
+```
+
+From the workstation, `ssh -o PreferredAuthentications=publickey -l root ubuntu1` must give
+`Permission denied (publickey)`, and the log must show `ROOT LOGIN REFUSED` with no `not allowed` line for root.
+Undo at once. Ansible does not manage `root` and will not revert it:
+
+```sh
+gpasswd -d root km1-ssh-users
+mv /root/authorized_keys.bak /root/.ssh/authorized_keys   # or rm, if the file did not exist before
+getent group km1-ssh-users; ls -la /root/.ssh/          # back to the state before the test
+```

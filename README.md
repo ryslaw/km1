@@ -54,8 +54,9 @@ Each area is documented next to its code. Run all commands from the repo root un
 | Kubernetes | [k8s/README.md](k8s/README.md) | The k3d cluster, deploying a new version, pulling from GHCR, probes and chaos drills |
 | Monitoring | [monitoring/README.md](monitoring/README.md) | Prometheus and Grafana (kube-prometheus-stack, `helm/kube-prometheus-stack/`), the km1 dashboard |
 | GitOps | [argocd/README.md](argocd/README.md) | Argo CD (`helm/argo-cd/`) and the km1 Application |
-| Ansible | [ansible/README.md](ansible/README.md) | Setup, inventory, the physical hosts, the Compose playbook, linting |
+| Ansible | [ansible/README.md](ansible/README.md) | Setup, inventory, the physical hosts, the SSH policy, the Compose playbook, linting |
 | Ansible role `users` | [ansible/roles/users/README.md](ansible/roles/users/README.md) | Role variables, removing accounts and sudo rules |
+| Ansible role `ssh_hardening` | [ansible/roles/ssh_hardening/README.md](ansible/roles/ssh_hardening/README.md) | What the role enforces, `AllowGroups`, how a change is applied safely |
 | Access model | [docs/access-model.md](docs/access-model.md) | Who has which rights on the physical hosts, and why |
 
 ## Roadmap
