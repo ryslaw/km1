@@ -2,16 +2,17 @@
 users_groups:
   - km1-operators
   - km1-auditors
+  - km1-ssh-users
 
 users_accounts:
   - name: kkrawczyk
-    groups: ["km1-operators"]
+    groups: ["km1-operators", "km1-ssh-users"]
     ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDS6gtvRSgavYhEabzOAy5bdLFCj+czbls64SrK/gfkq kkrawczyk@km1"
   - name: akrawczyk
-    groups: ["km1-auditors", "adm"]
+    groups: ["km1-auditors", "adm", "km1-ssh-users"]
     ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJKZEgAeG5CqSurSQDc4HcY8R3+WwnBfGWFRRvlk/3Hw akrawczyk@km1"
   - name: svc-ansible
-    groups: []
+    groups: ["km1-ssh-users"]
     ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMfn8p1P++qYOuVHaE2cMZWdVrgCwj9UcySqQP5yGKkH svc-ansible@km1"
 
 users_sudoers:
@@ -26,3 +27,7 @@ users_sudoers:
       - ALL
     nopasswd: true
     runas: ALL
+
+users_group_memberships:
+  - name: ryslaw
+    groups: ["km1-ssh-users"]

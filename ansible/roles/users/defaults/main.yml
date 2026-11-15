@@ -7,3 +7,6 @@ users_accounts: []
 
 # Sudo rules, one file in /etc/sudoers.d/ per entry; see README.md#users_sudoers
 users_sudoers: []
+
+# Supplementary groups for accounts this role does not manage; see README.md#users_group_memberships
+users_group_memberships: []

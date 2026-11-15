@@ -1,0 +1,3 @@
+---
+ssh_hardening_allow_groups:
+  - km1-ssh-users

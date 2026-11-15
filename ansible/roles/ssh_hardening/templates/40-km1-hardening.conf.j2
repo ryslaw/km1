@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+{% if ssh_hardening_allow_groups %}
+AllowGroups {{ ssh_hardening_allow_groups | join(" ") }}
+{% endif %}

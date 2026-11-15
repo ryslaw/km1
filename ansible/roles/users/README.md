@@ -1,7 +1,8 @@
 # users
 
-Manages role groups, user accounts with their SSH public keys, and sudo rules on Linux hosts. Accounts get a locked
-password, so they log in with their SSH key only.
+Manages role groups, user accounts with their SSH public keys, sudo rules, and group memberships of accounts it
+does not otherwise manage, on Linux hosts. Managed accounts get a locked password, so they log in with their SSH
+key only.
 
 ## Requirements
 
@@ -12,7 +13,7 @@ password, so they log in with their SSH key only.
 
 ## Role variables
 
-All three lists default to empty, so the role changes nothing until they are set. In this repository they are set in
+All four lists default to empty, so the role changes nothing until they are set. In this repository they are set in
 `ansible/group_vars/hypervisors/users.yml`.
 
 ### `users_groups`
@@ -68,6 +69,30 @@ users_sudoers:
     state: absent
 ```
 
+### `users_group_memberships`
+
+Adds accounts that this role does not manage, for example a personal admin account created by the OS installer,
+to supplementary groups. Nothing else about the account changes: not its password, shell, keys, or other groups.
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Login name of an existing account. If it does not exist, the play fails before any account is changed. |
+| `groups` | yes | Groups to add the account to. Existing memberships are kept (`append: true`). |
+
+Every group must already exist: either a system group or one listed in `users_groups`.
+
+```yaml
+users_group_memberships:
+  - name: admin
+    groups: ["role_group1"]
+```
+
+- This list only adds. Removing a group from an entry, or removing the entry, leaves the membership on the
+  hosts. Remove it by hand: `sudo gpasswd -d <account> <group>`.
+- An account must not be in both `users_accounts` and `users_group_memberships`. The first sets the full list
+  of groups and the second adds to it, so every run would change the account back and forth and never report
+  `changed=0`.
+
 ## Removing an account or a sudo rule
 
 Deleting an entry from the list deletes nothing on the hosts, because the role leaves unlisted accounts and rules
@@ -89,7 +114,8 @@ None.
 
 ## Example playbook
 
-`ansible/hypervisors.yml` applies the role to the `hypervisors` group:
+`ansible/hypervisors.yml` applies the role to the `hypervisors` group, followed by the `ssh_hardening` role,
+which relies on the group memberships set here:
 
 ```yaml
 - name: Configure Hypervisor machines
@@ -98,6 +124,7 @@ None.
   gather_facts: false
   roles:
     - users
+    - ssh_hardening
 ```
 
 How to run it, including the bootstrap run, is described in
