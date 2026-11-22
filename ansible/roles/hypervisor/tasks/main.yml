@@ -10,7 +10,7 @@
 - name: Verify that hardware virtualization is available
   ansible.builtin.assert:
     that: hypervisor_virtualization.stat.exists
-    fail_msg: Check that VT-x is enabled in the BIOS and that the kvm_intel module is loaded.
+    fail_msg: "{{ hypervisor_kvm_path }} is missing. Check that VT-x is enabled in the BIOS and that the kvm_intel module is loaded."
 
 - name: Install KVM and libvirt packages
   ansible.builtin.apt:
