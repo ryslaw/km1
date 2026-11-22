@@ -1,0 +1,79 @@
+---
+- name: Check if the KVM device exists
+  ansible.builtin.stat:
+    path: "{{ hypervisor_kvm_path }}"
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hypervisor_virtualization
+
+- name: Verify that hardware virtualization is available
+  ansible.builtin.assert:
+    that: hypervisor_virtualization.stat.exists
+    fail_msg: Check that VT-x is enabled in the BIOS and that the kvm_intel module is loaded.
+
+- name: Install KVM and libvirt packages
+  ansible.builtin.apt:
+    name:
+      - qemu-system-x86
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - python3-libvirt
+      - python3-lxml
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Enable and start libvirtd.socket
+  ansible.builtin.systemd_service:
+    name: libvirtd.socket
+    enabled: true
+    state: started
+  become: true
+
+- name: Enable libvirtd.service
+  ansible.builtin.systemd_service:
+    name: libvirtd.service
+    enabled: true
+  become: true
+
+- name: Set vmstore logical volume
+  community.general.lvol:
+    vg: "{{ hypervisor_vg }}"
+    lv: "{{ hypervisor_lv_name }}"
+    size: "{{ hypervisor_lv_size }}"
+  become: true
+
+- name: Set vmstore filesystem
+  community.general.filesystem:
+    dev: "/dev/{{ hypervisor_vg }}/{{ hypervisor_lv_name }}"
+    fstype: ext4
+    resizefs: true
+  become: true
+
+- name: Mount vmstore filesystem
+  ansible.posix.mount:
+    src: "/dev/{{ hypervisor_vg }}/{{ hypervisor_lv_name }}"
+    path: "{{ hypervisor_lv_mountpoint }}"
+    state: mounted
+    fstype: ext4
+    opts: defaults,nofail,x-systemd.before=libvirtd.service
+    passno: "2"
+  notify: Reload systemd
+  become: true
+
+- name: Set vmstore filesystem root level permissions
+  ansible.builtin.file:
+    path: "{{ hypervisor_lv_mountpoint }}"
+    owner: root
+    group: root
+    mode: "0711"
+    state: directory
+  become: true
+
+# - name: Storage pool
+
+# - name: Network
+
+# - name: libvirt group
