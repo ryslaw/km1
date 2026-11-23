@@ -72,7 +72,24 @@
     state: directory
   become: true
 
-# - name: Storage pool
+- name: Define storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    xml: '{{ lookup("ansible.builtin.template", "pool.xml.j2") }}'
+    state: present
+  become: true
+
+- name: Start storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    state: active
+  become: true
+
+- name: Set autostart for storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    autostart: true
+  become: true
 
 # - name: Network
 

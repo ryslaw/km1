@@ -7,3 +7,6 @@ hypervisor_lv_name: vmstore
 
 # Mount point of that volume
 hypervisor_lv_mountpoint: /var/lib/libvirt/images
+
+# libvirt storage pool on that mount point; "default" is the name virt-install and virt-manager look for
+hypervisor_pool_name: default
