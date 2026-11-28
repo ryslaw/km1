@@ -91,6 +91,32 @@
     autostart: true
   become: true
 
-# - name: Network
+- name: Disable default network
+  community.libvirt.virt_net:
+    state: inactive
+    name: "{{ hypervisor_network_name }}"
+  become: true
 
-# - name: libvirt group
+- name: Disable autostart for default network
+  community.libvirt.virt_net:
+    autostart: false
+    name: "{{ hypervisor_network_name }}"
+  become: true
+
+- name: Get libvirt group
+  ansible.builtin.getent:
+    database: group
+    key: libvirt
+
+- name: Validate libvirt group
+  ansible.builtin.assert:
+    that: hypervisor_libvirt_actual == hypervisor_libvirt_members | sort
+    fail_msg: >-
+      The libvirt group on {{ inventory_hostname }} has {{ hypervisor_libvirt_actual }},
+      expected {{ hypervisor_libvirt_members | sort }}. Membership in libvirt equals root on the host.
+      Remove an unexpected account with 'sudo gpasswd -d <user> libvirt' or, if it is intended,
+      add it to hypervisor_libvirt_members in group_vars/hypervisors/hypervisor.yml.
+      Add a missing account with 'sudo gpasswd -a <user> libvirt' or remove it from that list.
+      The libvirt-daemon-system package adds every sudo member on each install and upgrade.
+  vars:
+    hypervisor_libvirt_actual: "{{ (ansible_facts.getent_group.libvirt[2].split(',') if ansible_facts.getent_group.libvirt[2] else []) | sort }}"
