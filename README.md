@@ -100,6 +100,7 @@ Each area is documented next to its code. Run all commands from the repo root un
 | Ansible | [ansible/README.md](ansible/README.md) | Setup, inventory, the physical hosts, the SSH policy, the Compose playbook, linting |
 | Ansible role `users` | [ansible/roles/users/README.md](ansible/roles/users/README.md) | Role variables, removing accounts and sudo rules |
 | Ansible role `ssh_hardening` | [ansible/roles/ssh_hardening/README.md](ansible/roles/ssh_hardening/README.md) | What the role enforces, `AllowGroups`, how a change is applied safely |
+| Ansible role `hypervisor` | [ansible/roles/hypervisor/README.md](ansible/roles/hypervisor/README.md) | What the role does, storage layout, default network, `libvirt` group check, verification |
 | Access model | [docs/access-model.md](docs/access-model.md) | Who has which rights on the physical hosts, and why |
 
 ## Roadmap
