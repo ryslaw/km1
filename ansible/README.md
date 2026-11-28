@@ -31,7 +31,8 @@ ansible-galaxy collection install -r ansible/requirements.yml
 `ansible/host_vars/` (`ansible_host`, `ansible_connection`). Settings shared by all hosts live in
 `ansible/group_vars/all.yml` (`ansible_python_interpreter`). Settings for one group live in a directory named
 after the group, for example `ansible/group_vars/hypervisors/`: `connection.yml` holds the SSH account and key,
-`users.yml` holds the accounts and sudo rules, and `ssh_hardening.yml` holds the SSH login policy. Check the merged
+`users.yml` holds the accounts and sudo rules, `ssh_hardening.yml` holds the SSH login policy, and
+`hypervisor.yml` holds the size of the VM storage and the expected members of the `libvirt` group. Check the merged
 result with:
 
 ```
@@ -60,7 +61,8 @@ account `ryslaw` is used only for the bootstrap run (see below).
 ## Managing accounts and sudo rules on the physical hosts
 
 `ansible/hypervisors.yml` applies the `users` role, then the `ssh_hardening` role (see
-[SSH policy on the physical hosts](#ssh-policy-on-the-physical-hosts)), to the `hypervisors` group. The `users`
+[SSH policy on the physical hosts](#ssh-policy-on-the-physical-hosts)), then the `hypervisor` role (see
+[KVM hypervisors on the physical hosts](#kvm-hypervisors-on-the-physical-hosts)), to the `hypervisors` group. The `users`
 role reads four lists from `ansible/group_vars/hypervisors/users.yml`: role groups (`users_groups`), accounts
 with their SSH public keys (`users_accounts`), sudo rules (`users_sudoers`), and extra groups for accounts it
 does not manage (`users_group_memberships`). The fields of each list are described in the
@@ -170,6 +172,36 @@ Give each workstation its own key, with a comment naming it (`ryslaw@<workstatio
 workstation can be revoked. The keys of `ryslaw` are not managed by Ansible: when a workstation is retired,
 remove its line from `authorized_keys` on both hosts by hand. Without a working workstation, add the key from
 the host's console.
+
+## KVM hypervisors on the physical hosts
+
+The `hypervisor` role turns both hosts into KVM hypervisors managed by libvirt. After a run, each host has:
+
+- QEMU and libvirt installed, with `libvirtd` enabled through its socket,
+- a 200 GiB logical volume `vmstore` on the SSD, mounted at `/var/lib/libvirt/images` and registered as the
+  libvirt storage pool `default` (active, autostart on),
+- the default NAT network `default` (`virbr0`) stopped, with autostart off,
+- a check that the `libvirt` group holds exactly the accounts in `hypervisor_libvirt_members`
+  (`ansible/group_vars/hypervisors/hypervisor.yml`).
+
+The role creates no VMs and does not change the host's network. What it does, the storage layout, and how to
+verify it are described in the [hypervisor role README](roles/hypervisor/README.md). Membership of `libvirt` equals
+root on the host; who is in the group and why is recorded in [docs/access-model.md](../docs/access-model.md).
+
+Roll out one host at a time, `ubuntu2` first, because `ubuntu1` is the control node:
+
+```
+ansible-playbook -l ubuntu2 ansible/hypervisors.yml --check --diff
+ansible-playbook -l ubuntu2 ansible/hypervisors.yml
+```
+
+On a new host the check run stops partway, because nothing is installed in check mode; the real run passes.
+Running the playbook again should report `changed=0`.
+
+**When the `libvirt` check fails.** The `libvirt-daemon-system` package adds every member of `sudo` to `libvirt`
+on each install and upgrade, so a new admin makes the next run stop with a message naming both lists. Decide
+whether the account should manage VMs: remove it with `sudo gpasswd -d <user> libvirt`, or add it to
+`hypervisor_libvirt_members` and record it in `docs/access-model.md` in the same pull request.
 
 ## Running the Compose stack with Ansible
 
