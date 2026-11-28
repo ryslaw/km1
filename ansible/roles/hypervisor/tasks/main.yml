@@ -1,0 +1,122 @@
+---
+- name: Check if the KVM device exists
+  ansible.builtin.stat:
+    path: "{{ hypervisor_kvm_path }}"
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hypervisor_virtualization
+
+- name: Verify that hardware virtualization is available
+  ansible.builtin.assert:
+    that: hypervisor_virtualization.stat.exists
+    fail_msg: "{{ hypervisor_kvm_path }} is missing. Check that VT-x is enabled in the BIOS and that the kvm_intel module is loaded."
+
+- name: Install KVM and libvirt packages
+  ansible.builtin.apt:
+    name:
+      - qemu-system-x86
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - python3-libvirt
+      - python3-lxml
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Enable and start libvirtd.socket
+  ansible.builtin.systemd_service:
+    name: libvirtd.socket
+    enabled: true
+    state: started
+  become: true
+
+- name: Enable libvirtd.service
+  ansible.builtin.systemd_service:
+    name: libvirtd.service
+    enabled: true
+  become: true
+
+- name: Set vmstore logical volume
+  community.general.lvol:
+    vg: "{{ hypervisor_vg }}"
+    lv: "{{ hypervisor_lv_name }}"
+    size: "{{ hypervisor_lv_size }}"
+  become: true
+
+- name: Set vmstore filesystem
+  community.general.filesystem:
+    dev: "/dev/{{ hypervisor_vg }}/{{ hypervisor_lv_name }}"
+    fstype: ext4
+    resizefs: true
+  become: true
+
+- name: Mount vmstore filesystem
+  ansible.posix.mount:
+    src: "/dev/{{ hypervisor_vg }}/{{ hypervisor_lv_name }}"
+    path: "{{ hypervisor_lv_mountpoint }}"
+    state: mounted
+    fstype: ext4
+    opts: defaults,nofail,x-systemd.before=libvirtd.service
+    passno: "2"
+  notify: Reload systemd
+  become: true
+
+- name: Set vmstore filesystem root level permissions
+  ansible.builtin.file:
+    path: "{{ hypervisor_lv_mountpoint }}"
+    owner: root
+    group: root
+    mode: "0711"
+    state: directory
+  become: true
+
+- name: Define storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    xml: '{{ lookup("ansible.builtin.template", "pool.xml.j2") }}'
+    state: present
+  become: true
+
+- name: Start storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    state: active
+  become: true
+
+- name: Set autostart for storage pool
+  community.libvirt.virt_pool:
+    name: "{{ hypervisor_pool_name }}"
+    autostart: true
+  become: true
+
+- name: Disable default network
+  community.libvirt.virt_net:
+    state: inactive
+    name: "{{ hypervisor_network_name }}"
+  become: true
+
+- name: Disable autostart for default network
+  community.libvirt.virt_net:
+    autostart: false
+    name: "{{ hypervisor_network_name }}"
+  become: true
+
+- name: Get libvirt group
+  ansible.builtin.getent:
+    database: group
+    key: libvirt
+
+- name: Validate libvirt group
+  ansible.builtin.assert:
+    that: hypervisor_libvirt_actual == hypervisor_libvirt_members | sort
+    fail_msg: >-
+      The libvirt group on {{ inventory_hostname }} has {{ hypervisor_libvirt_actual }},
+      expected {{ hypervisor_libvirt_members | sort }}. Membership in libvirt equals root on the host.
+      Remove an unexpected account with 'sudo gpasswd -d <user> libvirt' or, if it is intended,
+      add it to hypervisor_libvirt_members in group_vars/hypervisors/hypervisor.yml.
+      Add a missing account with 'sudo gpasswd -a <user> libvirt' or remove it from that list.
+      The libvirt-daemon-system package adds every sudo member on each install and upgrade.
+  vars:
+    hypervisor_libvirt_actual: "{{ (ansible_facts.getent_group.libvirt[2].split(',') if ansible_facts.getent_group.libvirt[2] else []) | sort }}"

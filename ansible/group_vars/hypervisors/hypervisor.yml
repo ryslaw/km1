@@ -1,0 +1,4 @@
+---
+hypervisor_lv_size: 200g
+hypervisor_libvirt_members:
+  - ryslaw

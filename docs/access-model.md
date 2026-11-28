@@ -54,12 +54,17 @@ SSH logins are limited by the `ssh_hardening` role, from `ansible/group_vars/hyp
 SSH key only, no `root` login, and only members of `km1-ssh-users`
 (see [SSH policy on the physical hosts](../ansible/README.md#ssh-policy-on-the-physical-hosts)).
 
+The `libvirt` group is not assigned by Ansible. The `libvirt-daemon-system` package adds every member of `sudo` to
+it, and the `hypervisor` role stops the playbook when the members differ from `hypervisor_libvirt_members` in
+`ansible/group_vars/hypervisors/hypervisor.yml` (see
+[KVM hypervisors on the physical hosts](../ansible/README.md#kvm-hypervisors-on-the-physical-hosts)).
+
 | Identity      | Login        | Groups                   | sudo |
 |---------------|--------------|--------------------------|------|
 | `kkrawczyk`   | SSH key only | `km1-operators`, `km1-ssh-users` | through `%km1-operators`: `/usr/bin/systemctl restart systemd-timesyncd` as root, without a password |
 | `akrawczyk`   | SSH key only | `km1-auditors`, `adm`, `km1-ssh-users` | none |
 | `svc-ansible` | SSH key only | `km1-ssh-users`          | every command as any user, without a password (see F4) |
-| `ryslaw`      | SSH key only; password for `sudo` and the console | ubuntu1: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `docker`, `km1-ssh-users`; ubuntu2: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `km1-ssh-users` | full, with password (`sudo` group) |
+| `ryslaw`      | SSH key only; password for `sudo` and the console | ubuntu1: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `docker`, `libvirt`, `km1-ssh-users`; ubuntu2: `adm`, `cdrom`, `sudo`, `dip`, `plugdev`, `lxd`, `libvirt`, `km1-ssh-users` | full, with password (`sudo` group) |
 | `root`        | none (SSH refused) | — | — |
 
 What each right is for:
@@ -78,6 +83,11 @@ What each right is for:
   `users_group_memberships` for `ryslaw`.
 - `root` cannot log in over SSH at all. Two rules refuse it independently: `AllowGroups` (root is not in
   `km1-ssh-users`) and `PermitRootLogin no`.
+- `libvirt` lets `ryslaw` manage VMs, storage pools, and networks through `qemu:///system` without `sudo`. It is
+  root-equivalent (see F9). Only `ryslaw` is a member: `svc-ansible` reaches libvirt through `sudo` and does not
+  need the group, and the operator and the auditor do not manage VMs.
+- Every local account can open a read-only connection to libvirt (`virsh -r`). It shows the configuration of every
+  libvirt object, but changes nothing (see F10).
 
 ## Secrets
 
@@ -108,6 +118,8 @@ run the playbook. If the lost key belongs to `svc-ansible`, use the bootstrap ru
 | F6 | An account or sudo rule whose entry is deleted from the list stays on the hosts | Orphaned access: a person who left keeps their login and rights, and nothing in the repo shows it | Accepted: revoking is an explicit step (`state: absent`, run, then delete the entry), documented in the role defaults and the README. Revisit if the role gets a mode that removes everything not listed |
 | F7 | The SSH keys of `ryslaw` are not managed by Ansible | The key of a retired or lost workstation keeps working until someone removes it by hand, and nothing in the repo shows it | Accepted: `ryslaw` is the bootstrap and break-glass admin, and its keys must not depend on Ansible working. Review `~/.ssh/authorized_keys` of `ryslaw` on both hosts when a workstation is retired. Revisit when the planned admin persona `dnorek` exists |
 | F8 | The Windows ssh-agent keeps the key of `ryslaw` across reboots | Anyone signed in to the workstation as that Windows user can use the key without the passphrase | Accepted: the workstation is personal and locked when unattended. Revisit if the workstation is shared |
+| F9 | `ryslaw` is in the `libvirt` group on both hosts | Root-equivalent without a password: a member can start a VM with the host's disk or root file system attached | Accepted: `ryslaw` already has full `sudo`, and the package adds every `sudo` member on each install and upgrade. The `hypervisor` role stops the playbook when the group holds anyone not in `hypervisor_libvirt_members`. Revisit when the planned admin persona `dnorek` exists |
+| F10 | Every local account can open a read-only libvirt connection | It shows the configuration of every libvirt object: names, disk paths and sizes of pools and, later, of VMs. Secrets in the VM configuration are hidden from read-only connections | Accepted: the read-only socket is the package default, and the hosts have only known accounts. Revisit if accounts outside the project get a login |
 
 ## Verification
 
@@ -189,3 +201,33 @@ gpasswd -d root km1-ssh-users
 mv /root/authorized_keys.bak /root/.ssh/authorized_keys   # or rm, if the file did not exist before
 getent group km1-ssh-users; ls -la /root/.ssh/          # back to the state before the test
 ```
+
+### libvirt
+
+Run these on each host. `ryslaw` has to log in again after joining `libvirt`, because groups are assigned at
+login. Always pass `-c qemu:///system`: without it, a regular user may get the private `qemu:///session`
+instance without any message.
+
+```sh
+# Members of libvirt: exactly the accounts in hypervisor_libvirt_members
+getent group libvirt
+# libvirt:x:111:ryslaw
+
+# A member manages libvirt without sudo
+virsh -c qemu:///system list --all
+
+# An account outside the group cannot open a management connection
+sudo -u akrawczyk virsh -c qemu:///system list --all
+# error: Failed to connect socket to '/var/run/libvirt/libvirt-sock': Permission denied
+
+# ...but a read-only connection shows the configuration (F10)
+sudo -u akrawczyk virsh -r -c qemu:///system pool-dumpxml default
+# the full pool XML: name, UUID, capacity, path, permissions
+
+# ...and refuses every change
+sudo -u akrawczyk virsh -r -c qemu:///system pool-refresh default
+# error: operation forbidden: read only access prevents virStoragePoolRefresh
+```
+
+The `hypervisor` role checks the group on every run. How to test that check is described in
+[Verifying](../ansible/roles/hypervisor/README.md#verifying) in the role README.

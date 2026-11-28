@@ -1,0 +1,18 @@
+---
+# Device that exists only when hardware virtualization is available
+hypervisor_kvm_path: /dev/kvm
+
+# Logical volume for VM disks; its volume group is set per host (hypervisor_vg)
+hypervisor_lv_name: vmstore
+
+# Mount point of that volume
+hypervisor_lv_mountpoint: /var/lib/libvirt/images
+
+# libvirt storage pool on that mount point; "default" is the name virt-install and virt-manager look for
+hypervisor_pool_name: default
+
+# libvirt network created by the package; the role stops it and disables its autostart
+hypervisor_network_name: default
+
+# Accounts expected in the libvirt group (equal to root on the host); the role only checks, it adds nobody
+hypervisor_libvirt_members: []
